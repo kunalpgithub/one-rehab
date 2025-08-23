@@ -17,12 +17,12 @@ export const handlers = [
 
   // POST /api/visits/complete - Mark visits as completed
   http.post('/api/visits/complete', async ({ request }) => {
-    const { patientIds, date } = await request.json()
+    const body = await request.json() as { patientIds: string[], date: string }
     return HttpResponse.json({
       success: true,
       message: 'Visits marked as completed',
-      updatedPatients: patientIds,
-      completedAt: date
+      updatedPatients: body.patientIds,
+      completedAt: body.date
     }, { status: 200 })
   }),
   // GET /api/users
