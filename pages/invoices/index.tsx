@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
 import { format, differenceInDays } from 'date-fns'
+import Navigation from '../../components/Navigation'
 
 interface ServiceRate {
   name: string
@@ -138,7 +139,9 @@ export default function Invoices() {
       <Head>
         <title>Invoice Generation - One Rehab</title>
       </Head>
-      <div className="max-w-7xl mx-auto p-8">
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <div className="max-w-7xl mx-auto p-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Invoice Generation</h1>
           <div className="space-x-4">
@@ -286,6 +289,7 @@ export default function Invoices() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
+import Navigation from '../../components/Navigation'
 
 interface Patient {
   id: string
@@ -92,7 +93,9 @@ export default function VisitManager() {
       <Head>
         <title>Visit Manager - One Rehab</title>
       </Head>
-      <div className="max-w-7xl mx-auto p-8">
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <div className="max-w-7xl mx-auto p-8">
         <h1 className="text-3xl font-bold mb-8 text-gray-800">Visit Manager</h1>
         
         <div className="flex gap-4 mb-8">
@@ -141,6 +144,7 @@ export default function VisitManager() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       </div>
     </>
