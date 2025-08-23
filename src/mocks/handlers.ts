@@ -1,0 +1,45 @@
+import { http, HttpResponse } from 'msw'
+import { faker } from '@faker-js/faker'
+
+// Example handlers for mock API endpoints
+export const handlers = [
+  // GET /api/users
+  http.get('/api/users', () => {
+    const users = Array.from({ length: 10 }, () => ({
+      id: faker.string.uuid(),
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      avatar: faker.image.avatar()
+    }))
+
+    return HttpResponse.json(users)
+  }),
+
+  // GET /api/user/:id
+  http.get('/api/user/:id', ({ params }) => {
+    const { id } = params
+    
+    return HttpResponse.json({
+      id,
+      name: faker.person.fullName(),
+      email: faker.internet.email(),
+      phone: faker.phone.number(),
+      address: {
+        street: faker.location.street(),
+        city: faker.location.city(),
+        zipCode: faker.location.zipCode()
+      }
+    })
+  }),
+
+  // POST /api/users
+  http.post('/api/users', async ({ request }) => {
+    const newUser = {
+      id: faker.string.uuid(),
+      createdAt: faker.date.recent(),
+      ...((await request.json()) as Record<string, unknown>)
+    }
+    
+    return HttpResponse.json(newUser, { status: 201 })
+  })
+]
