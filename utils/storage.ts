@@ -1,8 +1,9 @@
-import { Patient, ScheduledVisit } from '../types'
+import { Patient, ScheduledVisit, Invoice } from '../types'
 
 // Storage keys
 const PATIENTS_KEY = 'one-rehab-patients'
 const VISITS_KEY = 'one-rehab-visits'
+const INVOICES_KEY = 'one-rehab-invoices'
 
 // Helper functions for localStorage with error handling
 function getItem<T>(key: string, defaultValue: T): T {
@@ -127,6 +128,49 @@ export const visitsStorage = {
   }
 }
 
+// Invoices storage
+export const invoicesStorage = {
+  getAll: (): Invoice[] => {
+    return getItem<Invoice[]>(INVOICES_KEY, [])
+  },
+
+  getById: (id: string): Invoice | undefined => {
+    const invoices = invoicesStorage.getAll()
+    return invoices.find(i => i.id === id)
+  },
+
+  getByPatientId: (patientId: string): Invoice[] => {
+    const invoices = invoicesStorage.getAll()
+    return invoices.filter(i => i.patientId === patientId)
+  },
+
+  add: (invoice: Invoice): boolean => {
+    const invoices = invoicesStorage.getAll()
+    invoices.push(invoice)
+    return setItem(INVOICES_KEY, invoices)
+  },
+
+  update: (id: string, updates: Partial<Invoice>): boolean => {
+    const invoices = invoicesStorage.getAll()
+    const index = invoices.findIndex(i => i.id === id)
+    if (index === -1) {
+      return false
+    }
+    invoices[index] = { ...invoices[index], ...updates }
+    return setItem(INVOICES_KEY, invoices)
+  },
+
+  delete: (id: string): boolean => {
+    const invoices = invoicesStorage.getAll()
+    const filtered = invoices.filter(i => i.id !== id)
+    return setItem(INVOICES_KEY, filtered)
+  },
+
+  clear: (): boolean => {
+    return setItem(INVOICES_KEY, [])
+  }
+}
+
 // Utility to clear all app data
 export const clearAllData = (): boolean => {
   if (typeof window === 'undefined') {
@@ -136,6 +180,7 @@ export const clearAllData = (): boolean => {
   try {
     localStorage.removeItem(PATIENTS_KEY)
     localStorage.removeItem(VISITS_KEY)
+    localStorage.removeItem(INVOICES_KEY)
     return true
   } catch (error) {
     console.error('Error clearing localStorage:', error)
@@ -148,18 +193,22 @@ export const exportData = () => {
   return {
     patients: patientsStorage.getAll(),
     visits: visitsStorage.getAll(),
+    invoices: invoicesStorage.getAll(),
     exportedAt: new Date().toISOString()
   }
 }
 
 // Utility to import data (for restore)
-export const importData = (data: { patients?: Patient[]; visits?: ScheduledVisit[] }): boolean => {
+export const importData = (data: { patients?: Patient[]; visits?: ScheduledVisit[]; invoices?: Invoice[] }): boolean => {
   try {
     if (data.patients) {
       setItem(PATIENTS_KEY, data.patients)
     }
     if (data.visits) {
       setItem(VISITS_KEY, data.visits)
+    }
+    if (data.invoices) {
+      setItem(INVOICES_KEY, data.invoices)
     }
     return true
   } catch (error) {

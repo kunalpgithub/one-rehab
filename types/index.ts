@@ -46,3 +46,29 @@ export interface CreateVisitRequest {
   occurrences?: number
 }
 
+export interface Invoice {
+  id: string
+  patientId: string
+  patientName: string
+  service: string
+  startDate: string
+  endDate: string
+  ratePerVisit: number
+  visits: Array<{
+    date: string
+    attended: boolean
+    rate: number
+  }>
+  totalVisits: number
+  attendedVisits: number
+  missedVisits: number
+  totalAmount: number
+  createdAt: string
+}
+
+export interface CreateInvoiceRequest {
+  patientId: string
+  startDate: string
+  endDate: string
+  ratePerVisit: number
+}
