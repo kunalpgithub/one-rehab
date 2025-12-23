@@ -3,16 +3,9 @@ import { faker } from '@faker-js/faker'
 
 // Example handlers for mock API endpoints
 export const handlers = [
-  // GET /api/patients - Get list of patients
+  // GET /api/patients - Get list of patients (empty by default, users add through UI)
   http.get('/api/patients', () => {
-    const patients = Array.from({ length: 8 }, () => ({
-      id: faker.string.uuid(),
-      name: faker.person.fullName(),
-      service: faker.helpers.arrayElement(['Physical Therapy', 'Occupational Therapy', 'Speech Therapy', 'Rehabilitation']),
-      lastVisit: faker.date.recent({ days: 30 }).toISOString(),
-      status: faker.helpers.arrayElement(['pending', 'completed'])
-    }))
-    return HttpResponse.json(patients)
+    return HttpResponse.json([])
   }),
 
   // POST /api/visits/complete - Mark visits as completed

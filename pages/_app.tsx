@@ -19,6 +19,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         router.push('/dashboard')
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isLoading, router.pathname])
 
   useEffect(() => {
