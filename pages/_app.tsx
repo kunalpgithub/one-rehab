@@ -1,5 +1,6 @@
 import '../styles/globals.css'
 import type { AppProps } from 'next/app'
+import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
@@ -28,6 +29,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Register service worker for PWA
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((registration) => {
+            console.log('Service Worker registered:', registration.scope)
+          })
+          .catch((error) => {
+            console.log('Service Worker registration failed:', error)
+          })
+      })
+    }
+  }, [])
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -47,6 +64,12 @@ export default function App({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>
       <AuthGuard>
+        <Head>
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover"
+          />
+        </Head>
         <Component {...pageProps} />
       </AuthGuard>
     </AuthProvider>

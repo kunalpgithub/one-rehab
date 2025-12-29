@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate PWA Icons</title>
+</head>
+<body>
+  <h1>PWA Icon Generator</h1>
+  <p>Open this file in a browser and use the canvas below to create icons, then download them.</p>
+  
+  <canvas id="icon192" width="192" height="192" style="border: 1px solid #ccc; margin: 10px;"></canvas>
+  <canvas id="icon512" width="512" height="512" style="border: 1px solid #ccc; margin: 10px;"></canvas>
+  
+  <br>
+  <button onclick="generateIcons()">Generate Icons</button>
+  <button onclick="downloadIcon('icon192', 'icon-192x192.png')">Download 192x192</button>
+  <button onclick="downloadIcon('icon512', 'icon-512x512.png')">Download 512x512</button>
+
+  <script>
+    function generateIcons() {
+      const sizes = [
+        { id: 'icon192', size: 192 },
+        { id: 'icon512', size: 512 }
+      ];
+
+      sizes.forEach(({ id, size }) => {
+        const canvas = document.getElementById(id);
+        const ctx = canvas.getContext('2d');
+        
+        // Blue background
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(0, 0, size, size);
+        
+        // Rounded corners effect
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        ctx.roundRect(0, 0, size, size, size * 0.125);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        
+        // White text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${size * 0.4}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('OR', size / 2, size / 2);
+      });
+    }
+
+    function downloadIcon(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    // Generate on load
+    window.onload = generateIcons;
+  </script>
+</body>
+</html>
+
