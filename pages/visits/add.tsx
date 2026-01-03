@@ -3,15 +3,17 @@ import { useRouter } from 'next/router'
 import Head from 'next/head'
 import Navigation from '../../components/Navigation'
 import { useAuth } from '../../contexts/AuthContext'
-import { Patient, User, ServiceType, VisitFrequency, CreatePatientRequest, CreateVisitRequest } from '../../types'
+import { Patient, User, ServiceType, VisitFrequency, CreatePatientRequest, CreateVisitRequest, TimeSlot } from '../../types'
 import { patientsStorage, visitsStorage } from '../../utils/storage'
 import { usePatients } from '../../hooks/usePatients'
 import { generateVisitDates } from '../../utils/visitScheduler'
 
 type FormMode = 'existing' | 'new'
+type EndDateType = 'date' | 'occurrences' | 'infinite'
 
 const SERVICES: ServiceType[] = ['Physical Therapy', 'Occupational Therapy', 'Speech Therapy', 'Rehabilitation']
 const FREQUENCIES: VisitFrequency[] = ['daily', 'weekly', 'monthly']
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function AddVisitPage() {
   const router = useRouter()
@@ -26,6 +28,7 @@ export default function AddVisitPage() {
   const [patientName, setPatientName] = useState('')
   const [patientService, setPatientService] = useState<ServiceType>('Physical Therapy')
   const [selectedPatientId, setSelectedPatientId] = useState('')
+  const [selectedService, setSelectedService] = useState<ServiceType>('Physical Therapy')
 
   // Visit form fields
   const [visitorType, setVisitorType] = useState<'current' | 'other'>('current')
@@ -33,9 +36,10 @@ export default function AddVisitPage() {
   const [frequency, setFrequency] = useState<VisitFrequency>('weekly')
   const [visitsPerPeriod, setVisitsPerPeriod] = useState(1)
   const [startDate, setStartDate] = useState('')
-  const [endDateType, setEndDateType] = useState<'date' | 'occurrences'>('date')
+  const [endDateType, setEndDateType] = useState<EndDateType>('infinite')
   const [endDate, setEndDate] = useState('')
   const [occurrences, setOccurrences] = useState(4)
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
 
   useEffect(() => {
     // Fetch firm users
@@ -59,7 +63,39 @@ export default function AddVisitPage() {
     if (user) {
       setSelectedVisitorId(user.id)
     }
+
+    // Initialize default time slot
+    setTimeSlots([{ time: '09:00' }])
   }, [user, router.query, existingPatients])
+
+  // Update time slots when visitsPerPeriod or frequency changes
+  useEffect(() => {
+    if (frequency === 'daily') {
+      // For daily, just need time slots (no day selection)
+      const newSlots: TimeSlot[] = []
+      for (let i = 0; i < visitsPerPeriod; i++) {
+        const hour = 9 + (i * 3) // Default: 9 AM, 12 PM, 3 PM, etc.
+        newSlots.push({ time: `${hour.toString().padStart(2, '0')}:00` })
+      }
+      setTimeSlots(newSlots)
+    } else if (frequency === 'weekly') {
+      // For weekly, need day of week + time
+      const newSlots: TimeSlot[] = []
+      for (let i = 0; i < visitsPerPeriod; i++) {
+        const dayOfWeek = (i + 1) % 7 // Default: Monday, Tuesday, etc.
+        newSlots.push({ dayOfWeek, time: '09:00' })
+      }
+      setTimeSlots(newSlots)
+    } else if (frequency === 'monthly') {
+      // For monthly, need day of month + time
+      const newSlots: TimeSlot[] = []
+      for (let i = 0; i < visitsPerPeriod; i++) {
+        const dayOfMonth = (i + 1) * 7 // Default: 7th, 14th, 21st, 28th
+        newSlots.push({ dayOfMonth, time: '09:00' })
+      }
+      setTimeSlots(newSlots)
+    }
+  }, [frequency, visitsPerPeriod])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -106,6 +142,24 @@ export default function AddVisitPage() {
       newErrors.endDate = 'End date must be after start date'
     }
 
+    // Time slots validation
+    if (timeSlots.length !== visitsPerPeriod) {
+      newErrors.timeSlots = `Please configure ${visitsPerPeriod} time slot${visitsPerPeriod > 1 ? 's' : ''}`
+    }
+    
+    for (let i = 0; i < timeSlots.length; i++) {
+      const slot = timeSlots[i]
+      if (!slot.time || !/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(slot.time)) {
+        newErrors[`timeSlot_${i}`] = 'Please enter a valid time (HH:mm)'
+      }
+      if (frequency === 'weekly' && (slot.dayOfWeek === undefined || slot.dayOfWeek < 0 || slot.dayOfWeek > 6)) {
+        newErrors[`dayOfWeek_${i}`] = 'Please select a day of week'
+      }
+      if (frequency === 'monthly' && (slot.dayOfMonth === undefined || slot.dayOfMonth < 1 || slot.dayOfMonth > 31)) {
+        newErrors[`dayOfMonth_${i}`] = 'Please enter a valid day of month (1-31)'
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -137,6 +191,14 @@ export default function AddVisitPage() {
           throw new Error('Failed to save patient')
         }
         patientId = newPatient.id
+      } else {
+        // Update patient service if changed
+        if (selectedPatientId) {
+          const patient = existingPatients.find(p => p.id === selectedPatientId)
+          if (patient && patient.service !== selectedService) {
+            updatePatient(selectedPatientId, { service: selectedService })
+          }
+        }
       }
 
       // Determine visitor ID
@@ -147,6 +209,7 @@ export default function AddVisitPage() {
         frequency,
         visitsPerPeriod,
         startDate,
+        timeSlots,
         endDateType === 'date' ? endDate : undefined,
         endDateType === 'occurrences' ? occurrences : undefined
       )
@@ -163,7 +226,8 @@ export default function AddVisitPage() {
         frequency,
         visitsPerPeriod,
         startDate,
-        ...(endDateType === 'date' ? { endDate } : { occurrences }),
+        ...(endDateType === 'date' ? { endDate } : endDateType === 'occurrences' ? { occurrences } : {}),
+        timeSlots,
         generatedDates,
         createdAt: new Date().toISOString()
       }
@@ -291,8 +355,8 @@ export default function AddVisitPage() {
                 </div>
               </div>
             ) : (
-              <div className="mb-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Patient Information</h3>
+              <div className="mb-6 space-y-4">
+                <h3 className="text-lg font-medium text-gray-900">Patient Information</h3>
                 <div>
                   <label htmlFor="selectedPatient" className="block text-sm font-medium text-gray-700 mb-1">
                     Select Patient *
@@ -300,7 +364,14 @@ export default function AddVisitPage() {
                   <select
                     id="selectedPatient"
                     value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedPatientId(e.target.value)
+                      // Set service from selected patient
+                      const patient = existingPatients.find(p => p.id === e.target.value)
+                      if (patient) {
+                        setSelectedService(patient.service)
+                      }
+                    }}
                     className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
                       errors.selectedPatientId ? 'border-red-300' : 'border-gray-300'
                     }`}
@@ -314,6 +385,28 @@ export default function AddVisitPage() {
                   </select>
                   {errors.selectedPatientId && (
                     <p className="mt-1 text-sm text-red-600">{errors.selectedPatientId}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="selectedService" className="block text-sm font-medium text-gray-700 mb-1">
+                    Service *
+                  </label>
+                  <select
+                    id="selectedService"
+                    value={selectedService}
+                    onChange={(e) => setSelectedService(e.target.value as ServiceType)}
+                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                      errors.selectedService ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  >
+                    {SERVICES.map((service) => (
+                      <option key={service} value={service}>
+                        {service}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.selectedService && (
+                    <p className="mt-1 text-sm text-red-600">{errors.selectedService}</p>
                   )}
                 </div>
               </div>
@@ -420,6 +513,91 @@ export default function AddVisitPage() {
                 )}
               </div>
 
+              {/* Time Slots Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {frequency === 'daily' 
+                    ? 'Time Slots (for each day)' 
+                    : frequency === 'weekly' 
+                    ? 'Day of Week & Time (for each week)'
+                    : 'Day of Month & Time (for each month)'} *
+                </label>
+                <div className="space-y-3">
+                  {timeSlots.map((slot, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row gap-3 p-3 border border-gray-200 rounded-md bg-gray-50">
+                      {frequency === 'weekly' && (
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-600 mb-1">Day of Week</label>
+                          <select
+                            value={slot.dayOfWeek ?? 1}
+                            onChange={(e) => {
+                              const newSlots = [...timeSlots]
+                              newSlots[index].dayOfWeek = parseInt(e.target.value)
+                              setTimeSlots(newSlots)
+                            }}
+                            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
+                              errors[`dayOfWeek_${index}`] ? 'border-red-300' : 'border-gray-300'
+                            }`}
+                          >
+                            {DAYS_OF_WEEK.map((day, dayIndex) => (
+                              <option key={dayIndex} value={dayIndex}>
+                                {day}
+                              </option>
+                            ))}
+                          </select>
+                          {errors[`dayOfWeek_${index}`] && (
+                            <p className="mt-1 text-xs text-red-600">{errors[`dayOfWeek_${index}`]}</p>
+                          )}
+                        </div>
+                      )}
+                      {frequency === 'monthly' && (
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-600 mb-1">Day of Month (1-31)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="31"
+                            value={slot.dayOfMonth ?? 1}
+                            onChange={(e) => {
+                              const newSlots = [...timeSlots]
+                              newSlots[index].dayOfMonth = parseInt(e.target.value) || 1
+                              setTimeSlots(newSlots)
+                            }}
+                            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
+                              errors[`dayOfMonth_${index}`] ? 'border-red-300' : 'border-gray-300'
+                            }`}
+                          />
+                          {errors[`dayOfMonth_${index}`] && (
+                            <p className="mt-1 text-xs text-red-600">{errors[`dayOfMonth_${index}`]}</p>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-600 mb-1">Time (HH:mm)</label>
+                        <input
+                          type="time"
+                          value={slot.time}
+                          onChange={(e) => {
+                            const newSlots = [...timeSlots]
+                            newSlots[index].time = e.target.value
+                            setTimeSlots(newSlots)
+                          }}
+                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
+                            errors[`timeSlot_${index}`] ? 'border-red-300' : 'border-gray-300'
+                          }`}
+                        />
+                        {errors[`timeSlot_${index}`] && (
+                          <p className="mt-1 text-xs text-red-600">{errors[`timeSlot_${index}`]}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {errors.timeSlots && (
+                  <p className="mt-1 text-sm text-red-600">{errors.timeSlots}</p>
+                )}
+              </div>
+
               {/* Start Date */}
               <div>
                 <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
@@ -447,6 +625,17 @@ export default function AddVisitPage() {
                     <input
                       type="radio"
                       name="endDateType"
+                      value="infinite"
+                      checked={endDateType === 'infinite'}
+                      onChange={() => setEndDateType('infinite')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Infinite (No end date)</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="endDateType"
                       value="date"
                       checked={endDateType === 'date'}
                       onChange={() => setEndDateType('date')}
@@ -469,7 +658,7 @@ export default function AddVisitPage() {
               </div>
 
               {/* End Date or Occurrences */}
-              {endDateType === 'date' ? (
+              {endDateType === 'date' && (
                 <div>
                   <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
                     End Date *
@@ -488,7 +677,8 @@ export default function AddVisitPage() {
                     <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
                   )}
                 </div>
-              ) : (
+              )}
+              {endDateType === 'occurrences' && (
                 <div>
                   <label htmlFor="occurrences" className="block text-sm font-medium text-gray-700 mb-1">
                     Number of Occurrences *

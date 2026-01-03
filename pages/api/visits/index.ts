@@ -23,8 +23,13 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ message: 'visitsPerPeriod must be at least 1' })
     }
 
-    if (!body.endDate && !body.occurrences) {
-      return res.status(400).json({ message: 'Either endDate or occurrences must be provided' })
+    // Validate time slots
+    if (!body.timeSlots || !Array.isArray(body.timeSlots) || body.timeSlots.length === 0) {
+      return res.status(400).json({ message: 'timeSlots array is required' })
+    }
+
+    if (body.timeSlots.length !== body.visitsPerPeriod) {
+      return res.status(400).json({ message: 'Number of time slots must match visits per period' })
     }
 
     // Generate visit dates
@@ -32,6 +37,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       body.frequency,
       body.visitsPerPeriod,
       body.startDate,
+      body.timeSlots,
       body.endDate,
       body.occurrences
     )
@@ -51,6 +57,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       startDate: body.startDate,
       endDate: body.endDate,
       occurrences: body.occurrences,
+      timeSlots: body.timeSlots,
       generatedDates,
       createdAt: new Date().toISOString()
     }

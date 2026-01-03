@@ -1,13 +1,14 @@
-import { VisitFrequency } from '../types'
-import { addDays, addWeeks, addMonths, startOfWeek, parseISO, isAfter, isBefore } from 'date-fns'
+import { VisitFrequency, TimeSlot } from '../types'
+import { addDays, addWeeks, addMonths, startOfWeek, parseISO, isAfter, isBefore, getDay, setHours, setMinutes } from 'date-fns'
 
 /**
- * Generates visit dates based on frequency and visits per period
+ * Generates visit dates based on frequency, visits per period, and time slots
  */
 export function generateVisitDates(
   frequency: VisitFrequency,
   visitsPerPeriod: number,
   startDate: string,
+  timeSlots: TimeSlot[],
   endDate?: string,
   occurrences?: number
 ): string[] {
@@ -21,8 +22,7 @@ export function generateVisitDates(
   let periodCount = 0
 
   if (frequency === 'daily') {
-    // Multiple visits per day - spread them throughout the day
-    const hoursPerVisit = Math.floor(24 / visitsPerPeriod)
+    // Use provided time slots for each day
     let dayCount = 0
     
     while (true) {
@@ -32,9 +32,11 @@ export function generateVisitDates(
       if (end && isAfter(baseDate, end)) break
       if (maxPeriods && periodCount >= maxPeriods) break
       
-      for (let i = 0; i < visitsPerPeriod; i++) {
+      // Apply each time slot to this day
+      for (const timeSlot of timeSlots) {
+        const [hours, minutes] = timeSlot.time.split(':').map(Number)
         const visitDate = new Date(baseDate)
-        visitDate.setHours(9 + (i * hoursPerVisit), 0, 0, 0) // Start at 9 AM, spread throughout day
+        visitDate.setHours(hours, minutes, 0, 0)
         dates.push(new Date(visitDate))
       }
       
@@ -42,9 +44,7 @@ export function generateVisitDates(
       dayCount++
     }
   } else if (frequency === 'weekly') {
-    // Multiple visits per week - spread them evenly throughout the week
-    // Calculate interval between visits (e.g., 3 visits = every ~2.3 days, so Mon, Wed, Fri)
-    const interval = Math.floor(7 / visitsPerPeriod)
+    // Use provided day of week and time slots
     let weekOffset = 0
     
     while (true) {
@@ -52,21 +52,24 @@ export function generateVisitDates(
       if (end && isAfter(addWeeks(start, weekOffset + 1), end)) break
       if (maxPeriods && periodCount >= maxPeriods) break
       
-      // For each week, calculate visit dates starting from the start date
-      const weekBaseDate = weekOffset === 0 
-        ? new Date(start)
-        : addWeeks(start, weekOffset)
+      // Get the start of the week (Sunday) for this week
+      const weekStartDate = weekOffset === 0 ? new Date(start) : addWeeks(start, weekOffset)
+      const weekStart = startOfWeek(weekStartDate, { weekStartsOn: 0 })
       
-      // Generate visits for this week
-      for (let i = 0; i < visitsPerPeriod; i++) {
-        const visitDate = new Date(weekBaseDate)
-        visitDate.setDate(visitDate.getDate() + (i * interval))
+      // For each time slot, find the day of week in this week
+      for (const timeSlot of timeSlots) {
+        if (timeSlot.dayOfWeek === undefined) continue
         
-        // Skip if before start date (for first week)
+        // Calculate the date for this day of week
+        const visitDate = addDays(weekStart, timeSlot.dayOfWeek)
+        
+        // Skip if before start date
         if (weekOffset === 0 && isBefore(visitDate, start)) continue
         if (end && isAfter(visitDate, end)) break
         
-        visitDate.setHours(10, 0, 0, 0) // 10 AM
+        // Apply time
+        const [hours, minutes] = timeSlot.time.split(':').map(Number)
+        visitDate.setHours(hours, minutes, 0, 0)
         dates.push(new Date(visitDate))
       }
       
@@ -74,7 +77,7 @@ export function generateVisitDates(
       weekOffset++
     }
   } else if (frequency === 'monthly') {
-    // Multiple visits per month - spread them throughout the month
+    // Use provided day of month and time slots
     let monthOffset = 0
     
     while (true) {
@@ -85,16 +88,21 @@ export function generateVisitDates(
       if (maxPeriods && periodCount >= maxPeriods) break
       
       const daysInMonth = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0).getDate()
-      const interval = Math.floor(daysInMonth / (visitsPerPeriod + 1))
       
-      for (let i = 1; i <= visitsPerPeriod; i++) {
-        const dayOfMonth = i * interval
+      // For each time slot, create visit on the specified day of month
+      for (const timeSlot of timeSlots) {
+        if (timeSlot.dayOfMonth === undefined) continue
+        
+        // Ensure day of month doesn't exceed days in month
+        const dayOfMonth = Math.min(timeSlot.dayOfMonth, daysInMonth)
         const visitDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth(), dayOfMonth)
         
         if (isBefore(visitDate, start)) continue
         if (end && isAfter(visitDate, end)) break
         
-        visitDate.setHours(10, 0, 0, 0) // 10 AM
+        // Apply time
+        const [hours, minutes] = timeSlot.time.split(':').map(Number)
+        visitDate.setHours(hours, minutes, 0, 0)
         dates.push(new Date(visitDate))
       }
       

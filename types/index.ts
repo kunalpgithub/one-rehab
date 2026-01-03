@@ -18,6 +18,12 @@ export interface User {
   firmId?: string
 }
 
+export interface TimeSlot {
+  time: string // Format: "HH:mm" (e.g., "09:00", "14:30")
+  dayOfWeek?: number // 0 = Sunday, 6 = Saturday (for weekly)
+  dayOfMonth?: number // 1-31 (for monthly)
+}
+
 export interface ScheduledVisit {
   id: string
   patientId: string
@@ -27,6 +33,7 @@ export interface ScheduledVisit {
   startDate: string
   endDate?: string
   occurrences?: number
+  timeSlots?: TimeSlot[] // Time slots for visits (optional for backward compatibility)
   generatedDates: string[]
   createdAt: string
 }
@@ -44,6 +51,7 @@ export interface CreateVisitRequest {
   startDate: string
   endDate?: string
   occurrences?: number
+  timeSlots: TimeSlot[]
 }
 
 export interface Invoice {
