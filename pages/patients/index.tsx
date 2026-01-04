@@ -2,46 +2,26 @@ import { useState, useEffect } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { motion } from 'framer-motion'
 import Navigation from '../../components/Navigation'
 import { Patient, ScheduledVisit } from '../../types'
 import { format, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
-import { usePatients } from '../../hooks/usePatients'
-import { visitsStorage } from '../../utils/storage'
+import { usePatientsQuery } from '../../hooks/usePatientsQuery'
+import { useVisitsQuery } from '../../hooks/useVisitsQuery'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { staggerContainer, staggerItem } from '../../lib/animations'
+import { toast } from '../../hooks/use-toast'
+import { PullToRefresh } from '../../components/PullToRefresh'
+import { useQueryClient } from '@tanstack/react-query'
 
 export default function PatientsManager() {
   const router = useRouter()
-  const { patients, loading: patientsLoading } = usePatients()
-  const [scheduledVisits, setScheduledVisits] = useState<ScheduledVisit[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    loadVisits()
-  }, [])
-
-  const loadVisits = () => {
-    try {
-      const visits = visitsStorage.getAll()
-      setScheduledVisits(visits)
-    } catch (error) {
-      console.error('Error loading visits:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Refresh visits when page becomes visible
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        loadVisits()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
+  const queryClient = useQueryClient()
+  const { data: patients = [], isLoading: patientsLoading } = usePatientsQuery()
+  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
+  
+  const loading = patientsLoading || visitsLoading
 
   // Get visit schedules for each patient
   const patientsWithSchedules = patients.map(patient => {
@@ -121,24 +101,38 @@ export default function PatientsManager() {
             </Link>
           </div>
 
-          {patientsWithSchedules.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+          <PullToRefresh
+            onRefresh={async () => {
+              queryClient.invalidateQueries({ queryKey: ['patients'] })
+              queryClient.invalidateQueries({ queryKey: ['visits'] })
+            }}
+          >
+            {patientsWithSchedules.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-lg border border-gray-200 p-8 text-center"
+            >
               <p className="text-gray-600 text-lg mb-2">No patients found</p>
               <p className="text-gray-500 text-sm mb-4">Get started by adding your first patient and visit schedule.</p>
-              <Link
-                href="/visits/add"
-                className="inline-block px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-              >
-                Add Patient & Visit
-              </Link>
-            </div>
+              <Button asChild>
+                <Link href="/visits/add">Add Patient & Visit</Link>
+              </Button>
+            </motion.div>
           ) : (
-            <div className="space-y-4">
-              {patientsWithSchedules.map(({ patient, nextVisit, scheduleSummary, totalUpcoming, totalPast }) => (
-                <div
+            <motion.div
+              initial="initial"
+              animate="animate"
+              variants={staggerContainer}
+              className="space-y-4"
+            >
+              {patientsWithSchedules.map(({ patient, nextVisit, scheduleSummary, totalUpcoming, totalPast }, index) => (
+                <motion.div
                   key={patient.id}
-                  className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                  variants={staggerItem}
                 >
+                  <Card className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-4">
@@ -221,24 +215,27 @@ export default function PatientsManager() {
 
                     {/* Actions */}
                     <div className="flex flex-col gap-2 sm:flex-shrink-0">
-                      <Link
-                        href={`/visits/add?patientId=${patient.id}`}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm text-center"
-                      >
-                        Add Visit
-                      </Link>
-                      <button
+                      <Button asChild size="sm">
+                        <Link href={`/visits/add?patientId=${patient.id}`}>
+                          Add Visit
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => router.push(`/visits?date=${format(new Date(), 'yyyy-MM-dd')}`)}
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm"
                       >
                         View Visits
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
+          </PullToRefresh>
         </div>
       </div>
     </>

@@ -7,6 +7,12 @@ import { Patient, User, ServiceType, VisitFrequency, CreatePatientRequest, Creat
 import { patientsStorage, visitsStorage } from '../../utils/storage'
 import { usePatients } from '../../hooks/usePatients'
 import { generateVisitDates } from '../../utils/visitScheduler'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
+import { Button } from '../../components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { toast } from '../../hooks/use-toast'
 
 type FormMode = 'existing' | 'new'
 type EndDateType = 'date' | 'occurrences' | 'infinite'
@@ -263,15 +269,16 @@ export default function AddVisitPage() {
         <Navigation />
         <div className="max-w-4xl mx-auto p-4 sm:p-8">
           <div className="mb-6">
-            <button
+            <Button
+              variant="ghost"
               onClick={() => router.push('/visits')}
-              className="text-blue-600 hover:text-blue-800 mb-4 flex items-center"
+              className="mb-4"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Back to Visits
-            </button>
+            </Button>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Add Patient & Visit</h1>
           </div>
 
@@ -314,43 +321,38 @@ export default function AddVisitPage() {
               <div className="mb-6 space-y-4">
                 <h3 className="text-lg font-medium text-gray-900">Patient Information</h3>
                 <div>
-                  <label htmlFor="patientName" className="block text-sm font-medium text-gray-700 mb-1">
-                    Patient Name *
-                  </label>
-                  <input
+                  <Label htmlFor="patientName">Patient Name *</Label>
+                  <Input
                     type="text"
                     id="patientName"
                     value={patientName}
                     onChange={(e) => setPatientName(e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.patientName ? 'border-red-300' : 'border-gray-300'
-                    }`}
                     placeholder="Enter patient name"
+                    className={errors.patientName ? 'border-destructive' : ''}
                   />
                   {errors.patientName && (
-                    <p className="mt-1 text-sm text-red-600">{errors.patientName}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.patientName}</p>
                   )}
                 </div>
                 <div>
-                  <label htmlFor="patientService" className="block text-sm font-medium text-gray-700 mb-1">
-                    Service *
-                  </label>
-                  <select
-                    id="patientService"
+                  <Label htmlFor="patientService">Service *</Label>
+                  <Select
                     value={patientService}
-                    onChange={(e) => setPatientService(e.target.value as ServiceType)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.patientService ? 'border-red-300' : 'border-gray-300'
-                    }`}
+                    onValueChange={(value) => setPatientService(value as ServiceType)}
                   >
-                    {SERVICES.map((service) => (
-                      <option key={service} value={service}>
-                        {service}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={errors.patientService ? 'border-destructive' : ''}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SERVICES.map((service) => (
+                        <SelectItem key={service} value={service}>
+                          {service}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.patientService && (
-                    <p className="mt-1 text-sm text-red-600">{errors.patientService}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.patientService}</p>
                   )}
                 </div>
               </div>
@@ -358,55 +360,52 @@ export default function AddVisitPage() {
               <div className="mb-6 space-y-4">
                 <h3 className="text-lg font-medium text-gray-900">Patient Information</h3>
                 <div>
-                  <label htmlFor="selectedPatient" className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Patient *
-                  </label>
-                  <select
-                    id="selectedPatient"
+                  <Label htmlFor="selectedPatient">Select Patient *</Label>
+                  <Select
                     value={selectedPatientId}
-                    onChange={(e) => {
-                      setSelectedPatientId(e.target.value)
+                    onValueChange={(value) => {
+                      setSelectedPatientId(value)
                       // Set service from selected patient
-                      const patient = existingPatients.find(p => p.id === e.target.value)
+                      const patient = existingPatients.find(p => p.id === value)
                       if (patient) {
                         setSelectedService(patient.service)
                       }
                     }}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.selectedPatientId ? 'border-red-300' : 'border-gray-300'
-                    }`}
                   >
-                    <option value="">-- Select a patient --</option>
-                    {existingPatients.map((patient) => (
-                      <option key={patient.id} value={patient.id}>
-                        {patient.name} - {patient.service}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={errors.selectedPatientId ? 'border-destructive' : ''}>
+                      <SelectValue placeholder="-- Select a patient --" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingPatients.map((patient) => (
+                        <SelectItem key={patient.id} value={patient.id}>
+                          {patient.name} - {patient.service}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.selectedPatientId && (
-                    <p className="mt-1 text-sm text-red-600">{errors.selectedPatientId}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.selectedPatientId}</p>
                   )}
                 </div>
                 <div>
-                  <label htmlFor="selectedService" className="block text-sm font-medium text-gray-700 mb-1">
-                    Service *
-                  </label>
-                  <select
-                    id="selectedService"
+                  <Label htmlFor="selectedService">Service *</Label>
+                  <Select
                     value={selectedService}
-                    onChange={(e) => setSelectedService(e.target.value as ServiceType)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.selectedService ? 'border-red-300' : 'border-gray-300'
-                    }`}
+                    onValueChange={(value) => setSelectedService(value as ServiceType)}
                   >
-                    {SERVICES.map((service) => (
-                      <option key={service} value={service}>
-                        {service}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={errors.selectedService ? 'border-destructive' : ''}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SERVICES.map((service) => (
+                        <SelectItem key={service} value={service}>
+                          {service}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.selectedService && (
-                    <p className="mt-1 text-sm text-red-600">{errors.selectedService}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.selectedService}</p>
                   )}
                 </div>
               </div>
@@ -449,67 +448,67 @@ export default function AddVisitPage() {
                   </label>
                 </div>
                 {visitorType === 'other' && (
-                  <select
-                    value={selectedVisitorId}
-                    onChange={(e) => setSelectedVisitorId(e.target.value)}
-                    className={`mt-2 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.selectedVisitorId ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">-- Select a visitor --</option>
-                    {firmUsers.map((firmUser) => (
-                      <option key={firmUser.id} value={firmUser.id}>
-                        {firmUser.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-2">
+                    <Select
+                      value={selectedVisitorId}
+                      onValueChange={(value) => setSelectedVisitorId(value)}
+                    >
+                      <SelectTrigger className={errors.selectedVisitorId ? 'border-destructive' : ''}>
+                        <SelectValue placeholder="-- Select a visitor --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {firmUsers.map((firmUser) => (
+                          <SelectItem key={firmUser.id} value={firmUser.id}>
+                            {firmUser.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
                 {errors.selectedVisitorId && (
-                  <p className="mt-1 text-sm text-red-600">{errors.selectedVisitorId}</p>
+                  <p className="mt-1 text-sm text-destructive">{errors.selectedVisitorId}</p>
                 )}
               </div>
 
               {/* Frequency */}
               <div>
-                <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-1">
-                  Frequency *
-                </label>
-                <select
-                  id="frequency"
+                <Label htmlFor="frequency">Frequency *</Label>
+                <Select
                   value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as VisitFrequency)}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.frequency ? 'border-red-300' : 'border-gray-300'
-                  }`}
+                  onValueChange={(value) => setFrequency(value as VisitFrequency)}
                 >
-                  {FREQUENCIES.map((freq) => (
-                    <option key={freq} value={freq}>
-                      {freq.charAt(0).toUpperCase() + freq.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={errors.frequency ? 'border-destructive' : ''}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FREQUENCIES.map((freq) => (
+                      <SelectItem key={freq} value={freq}>
+                        {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.frequency && (
-                  <p className="mt-1 text-sm text-red-600">{errors.frequency}</p>
+                  <p className="mt-1 text-sm text-destructive">{errors.frequency}</p>
                 )}
               </div>
 
               {/* Visits Per Period */}
               <div>
-                <label htmlFor="visitsPerPeriod" className="block text-sm font-medium text-gray-700 mb-1">
+                <Label htmlFor="visitsPerPeriod">
                   Visits per {frequency === 'daily' ? 'day' : frequency === 'weekly' ? 'week' : 'month'} *
-                </label>
-                <input
+                </Label>
+                <Input
                   type="number"
                   id="visitsPerPeriod"
                   min="1"
                   value={visitsPerPeriod}
                   onChange={(e) => setVisitsPerPeriod(parseInt(e.target.value) || 1)}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.visitsPerPeriod ? 'border-red-300' : 'border-gray-300'
-                  }`}
+                  className={errors.visitsPerPeriod ? 'border-destructive' : ''}
                 />
                 {errors.visitsPerPeriod && (
-                  <p className="mt-1 text-sm text-red-600">{errors.visitsPerPeriod}</p>
+                  <p className="mt-1 text-sm text-destructive">{errors.visitsPerPeriod}</p>
                 )}
               </div>
 
@@ -527,33 +526,35 @@ export default function AddVisitPage() {
                     <div key={index} className="flex flex-col sm:flex-row gap-3 p-3 border border-gray-200 rounded-md bg-gray-50">
                       {frequency === 'weekly' && (
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">Day of Week</label>
-                          <select
-                            value={slot.dayOfWeek ?? 1}
-                            onChange={(e) => {
+                          <Label className="text-xs">Day of Week</Label>
+                          <Select
+                            value={(slot.dayOfWeek ?? 1).toString()}
+                            onValueChange={(value) => {
                               const newSlots = [...timeSlots]
-                              newSlots[index].dayOfWeek = parseInt(e.target.value)
+                              newSlots[index].dayOfWeek = parseInt(value)
                               setTimeSlots(newSlots)
                             }}
-                            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
-                              errors[`dayOfWeek_${index}`] ? 'border-red-300' : 'border-gray-300'
-                            }`}
                           >
-                            {DAYS_OF_WEEK.map((day, dayIndex) => (
-                              <option key={dayIndex} value={dayIndex}>
-                                {day}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger className={`text-sm ${errors[`dayOfWeek_${index}`] ? 'border-destructive' : ''}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DAYS_OF_WEEK.map((day, dayIndex) => (
+                                <SelectItem key={dayIndex} value={dayIndex.toString()}>
+                                  {day}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           {errors[`dayOfWeek_${index}`] && (
-                            <p className="mt-1 text-xs text-red-600">{errors[`dayOfWeek_${index}`]}</p>
+                            <p className="mt-1 text-xs text-destructive">{errors[`dayOfWeek_${index}`]}</p>
                           )}
                         </div>
                       )}
                       {frequency === 'monthly' && (
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">Day of Month (1-31)</label>
-                          <input
+                          <Label className="text-xs">Day of Month (1-31)</Label>
+                          <Input
                             type="number"
                             min="1"
                             max="31"
@@ -563,18 +564,16 @@ export default function AddVisitPage() {
                               newSlots[index].dayOfMonth = parseInt(e.target.value) || 1
                               setTimeSlots(newSlots)
                             }}
-                            className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
-                              errors[`dayOfMonth_${index}`] ? 'border-red-300' : 'border-gray-300'
-                            }`}
+                            className={`text-sm ${errors[`dayOfMonth_${index}`] ? 'border-destructive' : ''}`}
                           />
                           {errors[`dayOfMonth_${index}`] && (
-                            <p className="mt-1 text-xs text-red-600">{errors[`dayOfMonth_${index}`]}</p>
+                            <p className="mt-1 text-xs text-destructive">{errors[`dayOfMonth_${index}`]}</p>
                           )}
                         </div>
                       )}
                       <div className="flex-1">
-                        <label className="block text-xs text-gray-600 mb-1">Time (HH:mm)</label>
-                        <input
+                        <Label className="text-xs">Time (HH:mm)</Label>
+                        <Input
                           type="time"
                           value={slot.time}
                           onChange={(e) => {
@@ -582,12 +581,10 @@ export default function AddVisitPage() {
                             newSlots[index].time = e.target.value
                             setTimeSlots(newSlots)
                           }}
-                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm ${
-                            errors[`timeSlot_${index}`] ? 'border-red-300' : 'border-gray-300'
-                          }`}
+                          className={`text-sm ${errors[`timeSlot_${index}`] ? 'border-destructive' : ''}`}
                         />
                         {errors[`timeSlot_${index}`] && (
-                          <p className="mt-1 text-xs text-red-600">{errors[`timeSlot_${index}`]}</p>
+                          <p className="mt-1 text-xs text-destructive">{errors[`timeSlot_${index}`]}</p>
                         )}
                       </div>
                     </div>
@@ -600,20 +597,16 @@ export default function AddVisitPage() {
 
               {/* Start Date */}
               <div>
-                <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
+                <Label htmlFor="startDate">Start Date *</Label>
+                <Input
                   type="date"
                   id="startDate"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.startDate ? 'border-red-300' : 'border-gray-300'
-                  }`}
+                  className={errors.startDate ? 'border-destructive' : ''}
                 />
                 {errors.startDate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
+                  <p className="mt-1 text-sm text-destructive">{errors.startDate}</p>
                 )}
               </div>
 
@@ -660,41 +653,33 @@ export default function AddVisitPage() {
               {/* End Date or Occurrences */}
               {endDateType === 'date' && (
                 <div>
-                  <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
-                    End Date *
-                  </label>
-                  <input
+                  <Label htmlFor="endDate">End Date *</Label>
+                  <Input
                     type="date"
                     id="endDate"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     min={startDate}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.endDate ? 'border-red-300' : 'border-gray-300'
-                    }`}
+                    className={errors.endDate ? 'border-destructive' : ''}
                   />
                   {errors.endDate && (
-                    <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.endDate}</p>
                   )}
                 </div>
               )}
               {endDateType === 'occurrences' && (
                 <div>
-                  <label htmlFor="occurrences" className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Occurrences *
-                  </label>
-                  <input
+                  <Label htmlFor="occurrences">Number of Occurrences *</Label>
+                  <Input
                     type="number"
                     id="occurrences"
                     min="1"
                     value={occurrences}
                     onChange={(e) => setOccurrences(parseInt(e.target.value) || 1)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.occurrences ? 'border-red-300' : 'border-gray-300'
-                    }`}
+                    className={errors.occurrences ? 'border-destructive' : ''}
                   />
                   {errors.occurrences && (
-                    <p className="mt-1 text-sm text-red-600">{errors.occurrences}</p>
+                    <p className="mt-1 text-sm text-destructive">{errors.occurrences}</p>
                   )}
                 </div>
               )}
@@ -708,20 +693,19 @@ export default function AddVisitPage() {
 
             {/* Footer */}
             <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-gray-200 pt-4 mt-6">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => router.push('/visits')}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {loading ? 'Saving...' : 'Save Patient & Visit'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

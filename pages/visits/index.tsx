@@ -1,57 +1,29 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
+import { motion } from 'framer-motion'
 import Navigation from '../../components/Navigation'
 import { Patient, ScheduledVisit } from '../../types'
 import { format, addDays, subDays, isSameDay, parseISO } from 'date-fns'
 import { usePatients } from '../../hooks/usePatients'
-import { visitsStorage } from '../../utils/storage'
+import { useVisitsQuery } from '../../hooks/useVisitsQuery'
+import { useQueryClient } from '@tanstack/react-query'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent } from '../../components/ui/card'
+import { staggerContainer, staggerItem } from '../../lib/animations'
+import { PullToRefresh } from '../../components/PullToRefresh'
 
 export default function VisitManager() {
   const { patients, loading: patientsLoading, updatePatient } = usePatients()
-  const [scheduledVisits, setScheduledVisits] = useState<ScheduledVisit[]>([])
+  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
+  const queryClient = useQueryClient()
   const [selectedPatients, setSelectedPatients] = useState<Set<string>>(new Set())
   const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set()) // Individual visit IDs
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [dateInputValue, setDateInputValue] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
-
-  useEffect(() => {
-    loadVisits()
-    
-    // Refresh data when page becomes visible (e.g., returning from add page)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        loadVisits()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
-
-  const loadVisits = () => {
-    try {
-      const visits = visitsStorage.getAll()
-      setScheduledVisits(visits)
-    } catch (error) {
-      console.error('Error loading visits:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Refresh data when component mounts or when returning from add page
-  useEffect(() => {
-    const handleFocus = () => {
-      loadVisits()
-    }
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
-  }, [])
+  
+  const loading = visitsLoading || patientsLoading
 
   const handleSelectPatient = (patientId: string) => {
     const newSelected = new Set(selectedPatients)
@@ -131,7 +103,9 @@ export default function VisitManager() {
       
       setSelectedVisits(new Set())
       setSelectedPatients(new Set())
-      loadVisits() // Refresh visits list
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['visits'] })
+      queryClient.invalidateQueries({ queryKey: ['patients'] })
     } catch (error) {
       console.error('Error updating visits:', error)
     } finally {
@@ -301,8 +275,14 @@ export default function VisitManager() {
         </div>
 
         {/* Timeline of Visits for Selected Date */}
-        {individualVisits.length > 0 ? (
-          <div>
+        <PullToRefresh
+          onRefresh={async () => {
+            queryClient.invalidateQueries({ queryKey: ['visits'] })
+            queryClient.invalidateQueries({ queryKey: ['patients'] })
+          }}
+        >
+          {individualVisits.length > 0 ? (
+            <div>
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
               Visits for {format(selectedDate, 'MMMM d, yyyy')} ({individualVisits.length} {individualVisits.length === 1 ? 'visit' : 'visits'})
             </h2>
@@ -339,7 +319,10 @@ export default function VisitManager() {
                       </div>
                       
                       {/* Visit card */}
-                      <div 
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3 }}
                         className={`flex-1 border-l-4 rounded-lg p-4 transition-all ${
                           isSelected
                             ? 'border-blue-500 bg-blue-50 shadow-md'
@@ -371,12 +354,12 @@ export default function VisitManager() {
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     </div>
                   )
                 })}
-              </div>
             </div>
+          </div>
           </div>
         ) : (
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200 p-8 sm:p-12 text-center">
@@ -407,6 +390,7 @@ export default function VisitManager() {
             </div>
           </div>
         )}
+        </PullToRefresh>
         </div>
       </div>
     </>

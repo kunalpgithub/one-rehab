@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
+import { Button } from './ui/button'
+import { useUIStore } from '@/stores/uiStore'
 
 export default function Navigation() {
   const { user, logout } = useAuth()
   const router = useRouter()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { mobileMenuOpen, setMobileMenuOpen, toggleMobileMenu } = useUIStore()
 
   if (!user) return null
 
@@ -58,22 +61,24 @@ export default function Navigation() {
             <div className="ml-3 relative">
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-700">{user.name}</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={logout}
-                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
                 >
                   Logout
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           {/* Mobile menu button */}
           <div className="flex items-center md:hidden">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-              aria-expanded="false"
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleMobileMenu}
+              aria-expanded={mobileMenuOpen}
               aria-label="Toggle menu"
             >
               <span className="sr-only">Open main menu</span>
@@ -110,46 +115,61 @@ export default function Navigation() {
                   />
                 </svg>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white border-t border-gray-200">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                  isActive(link.href)
-                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-            <div className="pt-4 pb-3 border-t border-gray-200">
-              <div className="px-3 mb-3">
-                <div className="text-base font-medium text-gray-800">{user.name}</div>
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="md:hidden overflow-hidden"
+          >
+            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white border-t border-gray-200">
+              {navLinks.map((link, index) => (
+                <motion.div
+                  key={link.href}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Link
+                    href={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-3 py-2 rounded-md text-base font-medium transition-colors ${
+                      isActive(link.href)
+                        ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
+                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </motion.div>
+              ))}
+              <div className="pt-4 pb-3 border-t border-gray-200">
+                <div className="px-3 mb-3">
+                  <div className="text-base font-medium text-gray-800">{user.name}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    logout()
+                  }}
+                  className="w-full justify-start"
+                >
+                  Logout
+                </Button>
               </div>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false)
-                  logout()
-                }}
-                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-              >
-                Logout
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   )
 }

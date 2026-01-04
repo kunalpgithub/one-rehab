@@ -1,16 +1,30 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Head from 'next/head'
+import { motion } from 'framer-motion'
 import { format, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
 import Navigation from '../../components/Navigation'
-import { usePatients } from '../../hooks/usePatients'
-import { visitsStorage, invoicesStorage } from '../../utils/storage'
+import { usePatientsQuery } from '../../hooks/usePatientsQuery'
+import { useVisitsQuery } from '../../hooks/useVisitsQuery'
+import { useInvoicesQuery, useCreateInvoice, useUpdateInvoice, useDeleteInvoice } from '../../hooks/useInvoicesQuery'
 import { Patient, ScheduledVisit, Invoice } from '../../types'
+import { Button } from '../../components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
+import { PullToRefresh } from '../../components/PullToRefresh'
+import { staggerContainer, staggerItem } from '../../lib/animations'
+import { toast } from '../../hooks/use-toast'
 
 export default function Invoices() {
-  const { patients, loading: patientsLoading } = usePatients()
-  const [scheduledVisits, setScheduledVisits] = useState<ScheduledVisit[]>([])
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: patients = [], isLoading: patientsLoading } = usePatientsQuery()
+  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
+  const { data: invoices = [], isLoading: invoicesLoading } = useInvoicesQuery()
+  const createInvoiceMutation = useCreateInvoice()
+  const updateInvoiceMutation = useUpdateInvoice()
+  const deleteInvoiceMutation = useDeleteInvoice()
+  
   const [showAddForm, setShowAddForm] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -20,22 +34,7 @@ export default function Invoices() {
   const [endDate, setEndDate] = useState('')
   const [ratePerVisit, setRatePerVisit] = useState<number>(75)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = () => {
-    try {
-      const visits = visitsStorage.getAll()
-      const invoiceData = invoicesStorage.getAll()
-      setScheduledVisits(visits)
-      setInvoices(invoiceData)
-    } catch (error) {
-      console.error('Error loading data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const loading = patientsLoading || visitsLoading || invoicesLoading
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -105,6 +104,11 @@ export default function Invoices() {
 
     if (visitsInRange.length === 0) {
       setErrors({ submit: 'No visits found for this patient in the selected date range' })
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No visits found for this patient in the selected date range',
+      })
       return
     }
 
@@ -130,27 +134,51 @@ export default function Invoices() {
       createdAt: new Date().toISOString()
     }
 
-    // Save to localStorage
-    if (invoicesStorage.add(newInvoice)) {
-      setInvoices(prev => [...prev, newInvoice])
-      
-      // Reset form
-      setSelectedPatientId('')
-      setStartDate('')
-      setEndDate('')
-      setRatePerVisit(75)
-      setShowAddForm(false)
-      setErrors({})
-    } else {
-      setErrors({ submit: 'Failed to save invoice' })
-    }
+    // Save using mutation
+    createInvoiceMutation.mutate(newInvoice, {
+      onSuccess: () => {
+        // Reset form
+        setSelectedPatientId('')
+        setStartDate('')
+        setEndDate('')
+        setRatePerVisit(75)
+        setShowAddForm(false)
+        setErrors({})
+        toast({
+          variant: 'success',
+          title: 'Success',
+          description: 'Invoice created successfully',
+        })
+      },
+      onError: (error) => {
+        setErrors({ submit: error.message || 'Failed to save invoice' })
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to create invoice',
+        })
+      },
+    })
   }
 
   const handleDeleteInvoice = (invoiceId: string) => {
     if (confirm('Are you sure you want to delete this invoice?')) {
-      if (invoicesStorage.delete(invoiceId)) {
-        setInvoices(prev => prev.filter(i => i.id !== invoiceId))
-      }
+      deleteInvoiceMutation.mutate(invoiceId, {
+        onSuccess: () => {
+          toast({
+            variant: 'success',
+            title: 'Success',
+            description: 'Invoice deleted successfully',
+          })
+        },
+        onError: () => {
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Failed to delete invoice',
+          })
+        },
+      })
     }
   }
 
@@ -174,15 +202,24 @@ export default function Invoices() {
       totalAmount
     }
 
-    if (invoicesStorage.update(invoiceId, updatedInvoice)) {
-      setInvoices(prev => prev.map(i => i.id === invoiceId ? updatedInvoice : i))
-    }
+    updateInvoiceMutation.mutate(
+      { id: invoiceId, updates: updatedInvoice },
+      {
+        onError: () => {
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Failed to update invoice',
+          })
+        },
+      }
+    )
   }
 
-  if (loading || patientsLoading) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     )
   }
@@ -195,133 +232,136 @@ export default function Invoices() {
       <div className="min-h-screen bg-gray-50">
         <Navigation />
         <div className="max-w-7xl mx-auto p-4 sm:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8"
+          >
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-0">Invoices</h1>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm sm:text-base"
-            >
-              {showAddForm ? 'Cancel' : '+ Create Invoice'}
-            </button>
-          </div>
-
-          {/* Add Invoice Form */}
-          {showAddForm && (
-            <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Invoice</h2>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="patient" className="block text-sm font-medium text-gray-700 mb-1">
-                    Patient *
-                  </label>
-                  <select
-                    id="patient"
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.selectedPatientId ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">-- Select a patient --</option>
-                    {patients.map(patient => (
-                      <option key={patient.id} value={patient.id}>
-                        {patient.name} - {patient.service}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.selectedPatientId && (
-                    <p className="mt-1 text-sm text-red-600">{errors.selectedPatientId}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
+              <DialogTrigger asChild>
+                <Button>+ Create Invoice</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create New Invoice</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
                   <div>
-                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date *
-                    </label>
-                    <input
-                      type="date"
-                      id="startDate"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.startDate ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    />
-                    {errors.startDate && (
-                      <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
+                    <Label htmlFor="patient">Patient *</Label>
+                    <Select
+                      value={selectedPatientId}
+                      onValueChange={(value) => setSelectedPatientId(value)}
+                    >
+                      <SelectTrigger className={errors.selectedPatientId ? 'border-destructive' : ''}>
+                        <SelectValue placeholder="-- Select a patient --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {patients.map(patient => (
+                          <SelectItem key={patient.id} value={patient.id}>
+                            {patient.name} - {patient.service}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.selectedPatientId && (
+                      <p className="mt-1 text-sm text-destructive">{errors.selectedPatientId}</p>
                     )}
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="startDate">Start Date *</Label>
+                      <Input
+                        type="date"
+                        id="startDate"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className={errors.startDate ? 'border-destructive' : ''}
+                      />
+                      {errors.startDate && (
+                        <p className="mt-1 text-sm text-destructive">{errors.startDate}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="endDate">End Date *</Label>
+                      <Input
+                        type="date"
+                        id="endDate"
+                        value={endDate}
+                        min={startDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className={errors.endDate ? 'border-destructive' : ''}
+                      />
+                      {errors.endDate && (
+                        <p className="mt-1 text-sm text-destructive">{errors.endDate}</p>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
-                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
-                      End Date *
-                    </label>
-                    <input
-                      type="date"
-                      id="endDate"
-                      value={endDate}
-                      min={startDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.endDate ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                    <Label htmlFor="ratePerVisit">Rate per Visit ($) *</Label>
+                    <Input
+                      type="number"
+                      id="ratePerVisit"
+                      min="0"
+                      step="0.01"
+                      value={ratePerVisit}
+                      onChange={(e) => setRatePerVisit(parseFloat(e.target.value) || 0)}
+                      placeholder="75.00"
+                      className={errors.ratePerVisit ? 'border-destructive' : ''}
                     />
-                    {errors.endDate && (
-                      <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
+                    {errors.ratePerVisit && (
+                      <p className="mt-1 text-sm text-destructive">{errors.ratePerVisit}</p>
                     )}
                   </div>
-                </div>
 
-                <div>
-                  <label htmlFor="ratePerVisit" className="block text-sm font-medium text-gray-700 mb-1">
-                    Rate per Visit ($) *
-                  </label>
-                  <input
-                    type="number"
-                    id="ratePerVisit"
-                    min="0"
-                    step="0.01"
-                    value={ratePerVisit}
-                    onChange={(e) => setRatePerVisit(parseFloat(e.target.value) || 0)}
-                    className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.ratePerVisit ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="75.00"
-                  />
-                  {errors.ratePerVisit && (
-                    <p className="mt-1 text-sm text-red-600">{errors.ratePerVisit}</p>
+                  {errors.submit && (
+                    <div className="rounded-md bg-destructive/10 p-3">
+                      <p className="text-sm text-destructive">{errors.submit}</p>
+                    </div>
                   )}
-                </div>
 
-                {errors.submit && (
-                  <div className="rounded-md bg-red-50 p-3">
-                    <p className="text-sm text-red-600">{errors.submit}</p>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setShowAddForm(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCreateInvoice} disabled={createInvoiceMutation.isPending}>
+                      {createInvoiceMutation.isPending ? 'Creating...' : 'Create Invoice'}
+                    </Button>
                   </div>
-                )}
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleCreateInvoice}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Create Invoice
-                  </button>
                 </div>
-              </div>
-            </div>
-          )}
+              </DialogContent>
+            </Dialog>
+          </motion.div>
 
           {/* Invoices List */}
-          {invoices.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-              <p className="text-gray-600 text-lg mb-2">No invoices created yet</p>
-              <p className="text-gray-500 text-sm">Create your first invoice by clicking the &quot;Create Invoice&quot; button above.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {invoices.map(invoice => (
-                <div key={invoice.id} className="bg-white rounded-lg border border-gray-200 p-6">
+          <PullToRefresh
+            onRefresh={async () => {
+              // TanStack Query will automatically refetch
+            }}
+          >
+            {invoices.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-lg border border-gray-200 p-8 text-center"
+              >
+                <p className="text-gray-600 text-lg mb-2">No invoices created yet</p>
+                <p className="text-gray-500 text-sm">Create your first invoice by clicking the &quot;Create Invoice&quot; button above.</p>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial="initial"
+                animate="animate"
+                variants={staggerContainer}
+                className="space-y-4"
+              >
+                {invoices.map(invoice => (
+                  <motion.div key={invoice.id} variants={staggerItem}>
+                    <Card>
+                      <CardContent className="p-6">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-1">{invoice.patientName}</h3>
@@ -333,12 +373,14 @@ export default function Invoices() {
                         Created: {format(parseISO(invoice.createdAt), 'MMM d, yyyy')}
                       </p>
                     </div>
-                    <button
+                    <Button
+                      variant="destructive"
+                      size="sm"
                       onClick={() => handleDeleteInvoice(invoice.id)}
-                      className="mt-2 sm:mt-0 px-3 py-1 text-sm text-red-600 hover:text-red-800 border border-red-300 rounded-md hover:bg-red-50"
+                      disabled={deleteInvoiceMutation.isPending}
                     >
-                      Delete
-                    </button>
+                      {deleteInvoiceMutation.isPending ? 'Deleting...' : 'Delete'}
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
@@ -417,22 +459,29 @@ export default function Invoices() {
                       </span>
                     </div>
                   </div>
-                </div>
-              ))}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
 
-              {/* Grand Total */}
-              {invoices.length > 0 && (
-                <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold text-gray-900">Grand Total:</span>
-                    <span className="text-2xl font-bold text-blue-600">
-                      ${invoices.reduce((sum, inv) => sum + inv.totalAmount, 0).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                {/* Grand Total */}
+                {invoices.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-blue-50 rounded-lg border border-blue-200 p-4"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-semibold text-gray-900">Grand Total:</span>
+                      <span className="text-2xl font-bold text-blue-600">
+                        ${invoices.reduce((sum, inv) => sum + inv.totalAmount, 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </PullToRefresh>
         </div>
       </div>
     </>
