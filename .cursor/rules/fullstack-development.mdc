@@ -1,0 +1,77 @@
+---
+description: Standards for front-end components, API endpoints, and database query/design
+alwaysApply: true
+---
+
+# Full-Stack Development: Components, API, Database
+
+When building or changing front-end components, API endpoints, or database queries/design, follow these conventions.
+
+---
+
+## Front-end components
+
+- **Location**: `components/`, `components/ui/`; pages under `pages/` (non-API).
+- **Styling**: Tailwind + `cn()` from `@/lib/utils`; never concatenate class strings. Use cva for variants; Radix for Dialog, Select, Toast, Label when needed.
+- **Data**: Use existing React Query hooks in `hooks/` (e.g. `usePatientsQuery`, `useVisitsQuery`). Do not add API routes or Supabase schema unless requested.
+- **Types**: Import from `@/types` or colocate; keep props typed.
+- **Behavior**: Forward `className`; handle loading/error/empty in UI; ensure focus and labels for accessibility.
+
+```tsx
+// ✅ Component with cn + typed props
+import { cn } from '@/lib/utils'
+type Props = { title: string; className?: string }
+export function Card({ title, className }: Props) {
+  return <div className={cn('rounded-lg border p-4', className)}>{title}</div>
+}
+```
+
+---
+
+## API endpoints
+
+- **Location**: `pages/api/**/*.ts`; one default export function `handler(req: NextApiRequest, res: NextApiResponse)`.
+- **Methods**: Branch on `req.method`; respond with `405` and `{ message: 'Method not allowed' }` for disallowed methods.
+- **Validation**: Validate `req.body` (required fields, types); return `400` with `{ message: '...' }` on failure.
+- **Success**: `200`/`201` with JSON body (resource or `{ id, ... }`). Use types from `@/types` for request/response shapes.
+- **Errors**: Use `res.status(code).json({ message })`; avoid throwing uncaught; log server-side if needed.
+
+```ts
+// ✅ Validate then respond
+if (req.method === 'POST') {
+  const body = req.body as CreatePatientRequest
+  if (!body.name || !body.service) {
+    return res.status(400).json({ message: 'Name and service are required' })
+  }
+  // ... create and res.status(201).json(created)
+} else {
+  res.status(405).json({ message: 'Method not allowed' })
+}
+```
+
+---
+
+## Database query and design
+
+- **Understand then optimize**: One round-trip over N+1; filter/sort/limit in the DB; select only needed columns.
+- **Indexes**: Add for hot `WHERE`/`JOIN`/`ORDER BY`/`GROUP BY`; prefer composite indexes matching query shape; avoid redundant indexes.
+- **Complex SQL**: Use CTEs for clarity; aggregate then join to keep row counts small; use window functions when you need per-group rankings without collapsing rows.
+- **Supabase**: Prefer `.select('col1, col2, parent(fk)')` for joins; use RPC or views for logic that doesn’t fit the client.
+- **RLS**: Keep `USING`/`WITH CHECK` cheap (e.g. `auth.uid() = user_id`); no heavy per-row subqueries.
+- **Verify**: Use EXPLAIN (ANALYZE, BUFFERS) to confirm index use and lower cost; no unbounded result sets.
+
+```sql
+-- ✅ Aggregate then join
+WITH visit_counts AS (
+  SELECT patient_id, COUNT(*) AS cnt FROM visit_attendance WHERE status = 'completed' GROUP BY patient_id
+)
+SELECT p.*, v.cnt FROM patients p LEFT JOIN visit_counts v ON v.patient_id = p.id;
+```
+
+---
+
+## Cross-cutting
+
+- **Types**: Define request/response and domain types in `types/` and reuse in API + UI.
+- **Hooks**: New server state in `hooks/` with React Query; call services/API, not inline fetch; invalidate on mutations.
+- **Tests**: Prefer TDD; cover validation and key paths in API and DB layer when adding behavior.
