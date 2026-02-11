@@ -1,0 +1,109 @@
+---
+description: Conventions for product spec, backlog, ideas, and feature-spec markdown files. Apply when creating or editing docs/spec.md, docs/backlog.md, docs/ideas.md, or docs/features/*.md
+globs: docs/**/*.md
+alwaysApply: false
+---
+
+# Spec and docs: spec, backlog, ideas, feature specs
+
+When creating or editing any of the following files, follow these formats exactly. Do not mix formats (e.g. do not put feature acceptance criteria in spec.md or backlog items in ideas.md).
+
+---
+
+## File layout (where things live)
+
+| File | Purpose |
+|------|--------|
+| `docs/spec.md` | High-level product spec only. No per-feature detail. |
+| `docs/backlog.md` | Prioritized list of features ready to implement; links to feature files. |
+| `docs/ideas.md` | Raw ideas / someday. No feature spec yet. |
+| `docs/features/<slug>.md` | One file per feature when ready to implement. Required for backlog items. |
+
+---
+
+## 1. docs/spec.md
+
+- **Content**: What the app is, who it’s for, tech boundaries, and pointer to this doc structure. No per-feature acceptance criteria.
+- **Required sections** (use these headings):
+  - `# <Product name> — product spec`
+  - `## What it is` (1–3 sentences)
+  - `## Users` (who uses the product)
+  - `## Tech boundaries` (stack and constraints; e.g. "No new API/schema unless feature spec requires it")
+  - `## Doc structure` (where backlog, ideas, and feature specs live)
+- **Do not**: Put backlog items, ideas, or full feature write-ups in spec.md. Keep it short and stable.
+
+---
+
+## 2. docs/features/<slug>.md (feature specs)
+
+- **Filename**: Lowercase, hyphenated slug (e.g. `visit-no-show.md`, `invoice-reminders.md`). No spaces.
+- **Frontmatter** (YAML at the very top, required):
+
+```yaml
+---
+status: ready | in-progress | done | blocked
+depends_on: []   # Optional. List paths: [features/other-feature.md]
+blocks: []       # Optional. Features blocked by this one.
+created: YYYY-MM-DD
+---
+```
+
+- **Status meanings**: `ready` = spec done, not started; `in-progress` = being built; `done` = shipped; `blocked` = blocked by another feature.
+- **Body sections** (use these headings):
+  - `# <Feature name>` (one line, title case)
+  - `## Goal` (1–2 sentences: what we want and why)
+  - `## Scope` (optional: UI only / API only / both / DB change)
+  - `## Acceptance` (bullet list of testable conditions; required)
+  - `## Out of scope` (optional: what we are not doing in this feature)
+  - `## Notes` (optional: tech hints, links to other feature files)
+- **Cross-references**: Use markdown links to other feature files when there are dependencies, e.g. `See [Visit no-show](features/visit-no-show.md) for status handling.`
+- **Do not**: Put random ideas or multiple unrelated features in one file. One feature per file.
+
+---
+
+## 3. docs/backlog.md
+
+- **Content**: Ordered list of features we are committed to implementing soon. Each item must have a corresponding feature spec in `docs/features/`.
+- **Required structure**:
+  - First line: `# Backlog (ready to implement)` or similar.
+  - Numbered list. Each line: `N. [Feature title](features/<slug>.md)` with optional trailing ` — depends on X, Y` if needed.
+- **Example**:
+
+```markdown
+# Backlog (ready to implement)
+
+1. [Visit no-show](features/visit-no-show.md)
+2. [Invoice reminders](features/invoice-reminders.md)
+3. [Reporting export](features/reporting-export.md) — depends on visit-no-show, invoice-reminders
+```
+
+- **Do not**: Add an item to the backlog without creating (or linking to) a feature spec in `docs/features/`. Do not put acceptance criteria or long descriptions in backlog.md.
+
+---
+
+## 4. docs/ideas.md
+
+- **Content**: Unprioritized list of possible features or improvements. No feature spec format; just short descriptions.
+- **Required structure**:
+  - First line: `# Ideas / someday` or similar.
+  - Unordered list of one-line (or short) ideas. No frontmatter, no acceptance criteria here.
+- **Example**:
+
+```markdown
+# Ideas / someday
+
+- SMS reminders for appointments
+- Patient portal (view visits, invoices)
+- Multi-location support
+```
+
+- **Promoting an idea**: When we decide to implement one, create a new file under `docs/features/<slug>.md` with full feature format and add it to `docs/backlog.md`. You may leave or remove the line in ideas.md.
+
+---
+
+## Checklist before saving
+
+- [ ] spec.md: Only high-level content; no feature acceptance criteria.
+- [ ] features/*.md: Frontmatter with `status` and `created`; at least `## Goal` and `## Acceptance`.
+- [ ] backlog.md: Numbered list with links to `features/<slug>.md` only; every linked feature has a feature file.
+- [ ] ideas.md: Simple list only; no feature-spec structure.
