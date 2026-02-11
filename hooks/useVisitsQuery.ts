@@ -1,47 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ScheduledVisit } from '@/types'
-import { visitsStorage } from '@/utils/storage'
+import { ScheduledVisit, CreateVisitRequest } from '@/types'
+import { visitsApi } from '@/services/api/visits'
 
 const VISITS_QUERY_KEY = ['visits']
-
-// Fetch visits from localStorage
-async function fetchVisits(): Promise<ScheduledVisit[]> {
-  return visitsStorage.getAll()
-}
-
-// Create visit
-async function createVisit(visit: ScheduledVisit): Promise<ScheduledVisit> {
-  if (visitsStorage.add(visit)) {
-    return visit
-  }
-  throw new Error('Failed to create visit')
-}
-
-// Update visit
-async function updateVisit({ id, updates }: { id: string; updates: Partial<ScheduledVisit> }): Promise<ScheduledVisit> {
-  const visits = visitsStorage.getAll()
-  const visit = visits.find(v => v.id === id)
-  if (!visit) {
-    throw new Error('Visit not found')
-  }
-  const updated = { ...visit, ...updates }
-  if (visitsStorage.update(id, updated)) {
-    return updated
-  }
-  throw new Error('Failed to update visit')
-}
-
-// Delete visit
-async function deleteVisit(id: string): Promise<void> {
-  if (!visitsStorage.delete(id)) {
-    throw new Error('Failed to delete visit')
-  }
-}
 
 export function useVisitsQuery() {
   return useQuery({
     queryKey: VISITS_QUERY_KEY,
-    queryFn: fetchVisits,
+    queryFn: () => visitsApi.getAll(),
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 }
@@ -50,9 +16,10 @@ export function useCreateVisit() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: createVisit,
+    mutationFn: (visit: CreateVisitRequest) => visitsApi.createSchedule(visit),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VISITS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
     },
   })
 }
@@ -61,9 +28,11 @@ export function useUpdateVisit() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: updateVisit,
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Omit<ScheduledVisit, 'id' | 'created_at'>> }) =>
+      visitsApi.update(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VISITS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
     },
   })
 }
@@ -72,9 +41,10 @@ export function useDeleteVisit() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: deleteVisit,
+    mutationFn: (id: string) => visitsApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VISITS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
     },
   })
 }

@@ -1,152 +1,107 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import Navigation from '../../components/Navigation'
-import { Patient, ScheduledVisit } from '../../types'
+import { VisitAttendance } from '../../types'
 import { format, addDays, subDays, isSameDay, parseISO } from 'date-fns'
-import { usePatients } from '../../hooks/usePatients'
-import { useVisitsQuery } from '../../hooks/useVisitsQuery'
+import { useAttendanceByDateQuery, useMarkAttendance } from '../../hooks/useAttendanceQuery'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { staggerContainer, staggerItem } from '../../lib/animations'
 import { PullToRefresh } from '../../components/PullToRefresh'
+import { toast } from '../../hooks/use-toast'
 
 export default function VisitManager() {
-  const { patients, loading: patientsLoading, updatePatient } = usePatients()
-  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [selectedPatients, setSelectedPatients] = useState<Set<string>>(new Set())
-  const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set()) // Individual visit IDs
-  const [submitting, setSubmitting] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [dateInputValue, setDateInputValue] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+  const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set()) // Attendance record IDs
   
-  const loading = visitsLoading || patientsLoading
+  // Use attendance query for the selected date
+  const { data: attendanceRecords = [], isLoading } = useAttendanceByDateQuery(selectedDate)
+  const markAttendanceMutation = useMarkAttendance()
 
-  const handleSelectPatient = (patientId: string) => {
-    const newSelected = new Set(selectedPatients)
-    if (newSelected.has(patientId)) {
-      newSelected.delete(patientId)
-      // Also deselect all visits for this patient
-      const newSelectedVisits = new Set(selectedVisits)
-      individualVisits
-        .filter(v => v.patientId === patientId)
-        .forEach(v => newSelectedVisits.delete(v.id))
-      setSelectedVisits(newSelectedVisits)
-    } else {
-      newSelected.add(patientId)
-      // Also select all visits for this patient
-      const newSelectedVisits = new Set(selectedVisits)
-      individualVisits
-        .filter(v => v.patientId === patientId)
-        .forEach(v => newSelectedVisits.add(v.id))
-      setSelectedVisits(newSelectedVisits)
-    }
-    setSelectedPatients(newSelected)
-  }
-
-  const handleSelectVisit = (visitId: string, patientId: string) => {
+  const handleSelectVisit = (attendanceId: string) => {
     const newSelected = new Set(selectedVisits)
-    if (newSelected.has(visitId)) {
-      newSelected.delete(visitId)
+    if (newSelected.has(attendanceId)) {
+      newSelected.delete(attendanceId)
     } else {
-      newSelected.add(visitId)
+      newSelected.add(attendanceId)
     }
     setSelectedVisits(newSelected)
-
-    // Update patient selection based on visit selection
-    const patientVisits = individualVisits.filter(v => v.patientId === patientId)
-    const selectedPatientVisits = patientVisits.filter(v => newSelected.has(v.id))
-    const newSelectedPatients = new Set(selectedPatients)
-    if (selectedPatientVisits.length === patientVisits.length && patientVisits.length > 0) {
-      newSelectedPatients.add(patientId)
-    } else {
-      newSelectedPatients.delete(patientId)
-    }
-    setSelectedPatients(newSelectedPatients)
   }
 
   const handleMarkCompleted = async () => {
-    if (selectedVisits.size === 0) return
+    if (selectedVisits.size === 0 || !user) return
 
-    setSubmitting(true)
     try {
-      // Get unique patient IDs from selected visits
-      const selectedPatientIds = new Set(Array.from(selectedVisits).map(visitId => {
-        const visit = individualVisits.find(v => v.id === visitId)
-        return visit?.patientId
-      }).filter(Boolean) as string[])
-
-      const response = await fetch('/api/visits/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          patientIds: Array.from(selectedPatientIds),
-          date: selectedDate.toISOString(),
-        }),
-      })
-
-      if (!response.ok) throw new Error('Failed to update visits')
-
-      // Update patients in localStorage
-      const today = selectedDate.toISOString()
-      selectedPatientIds.forEach(patientId => {
-        updatePatient(patientId, {
-          status: 'completed',
-          lastVisit: today
-        })
+      await markAttendanceMutation.mutateAsync({
+        attendanceIds: Array.from(selectedVisits),
+        status: 'completed',
+        markedBy: user.id
       })
       
       setSelectedVisits(new Set())
-      setSelectedPatients(new Set())
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['visits'] })
-      queryClient.invalidateQueries({ queryKey: ['patients'] })
+      toast({
+        title: 'Success',
+        description: `${selectedVisits.size} visit(s) marked as completed`,
+      })
     } catch (error) {
       console.error('Error updating visits:', error)
-    } finally {
-      setSubmitting(false)
+      toast({
+        title: 'Error',
+        description: 'Failed to update visits',
+        variant: 'destructive',
+      })
     }
   }
 
-  // Get all individual visits for the selected date (not grouped by patient)
+  // Transform attendance records to individual visits for display
   interface IndividualVisit {
     id: string
-    visitId: string // The scheduled visit ID
+    attendanceId: string
     patientId: string
     patientName: string
     service: string
     time: Date
-    visitorId: string
+    status: 'pending' | 'completed' | 'missed'
   }
 
-  const individualVisits: IndividualVisit[] = scheduledVisits.flatMap(visit => {
-    const patient = patients.find(p => p.id === visit.patientId)
-    if (!patient) return []
+  // First, deduplicate attendance records (same patient, date, and time)
+  const uniqueRecords = attendanceRecords.filter((record, index, self) => 
+    index === self.findIndex(r => 
+      r.patient_id === record.patient_id &&
+      r.scheduled_date === record.scheduled_date &&
+      r.scheduled_time === record.scheduled_time
+    )
+  )
 
-    return visit.generatedDates
-      .filter(date => {
-        const visitDate = parseISO(date)
-        return isSameDay(visitDate, selectedDate)
-      })
-      .map(date => ({
-        id: `${visit.id}-${date}`, // Unique ID for this specific visit instance
-        visitId: visit.id,
-        patientId: visit.patientId,
-        patientName: patient.name,
-        service: patient.service,
-        time: parseISO(date),
-        visitorId: visit.visitorId
-      }))
-  }).sort((a, b) => a.time.getTime() - b.time.getTime()) // Sort by time
-
-  // Get unique patient IDs with visits on selected date (for select all functionality)
-  const patientIdsWithVisits = new Set(individualVisits.map(v => v.patientId))
-  const patientsWithVisitsToday = patients.filter(p => patientIdsWithVisits.has(p.id))
+  const individualVisits: IndividualVisit[] = uniqueRecords
+    .filter(record => {
+      // Only show pending or completed visits (not missed unless we want to show them)
+      return record.status === 'pending' || record.status === 'completed'
+    })
+    .map(record => {
+      const patient = record.patient || { name: 'Unknown', service: 'Unknown' }
+      const scheduledDateTime = record.scheduled_time
+        ? parseISO(`${record.scheduled_date}T${record.scheduled_time}`)
+        : parseISO(record.scheduled_date)
+      
+      return {
+        id: record.id,
+        attendanceId: record.id,
+        patientId: record.patient_id,
+        patientName: patient.name || 'Unknown',
+        service: patient.service || 'Unknown',
+        time: scheduledDateTime,
+        status: record.status
+      }
+    })
+    .sort((a, b) => a.time.getTime() - b.time.getTime()) // Sort by time
 
   const handlePreviousDay = () => {
     const newDate = subDays(selectedDate, 1)
@@ -175,14 +130,12 @@ export default function VisitManager() {
   const handleSelectAll = () => {
     if (selectedVisits.size === individualVisits.length && individualVisits.length > 0) {
       setSelectedVisits(new Set())
-      setSelectedPatients(new Set())
     } else {
       setSelectedVisits(new Set(individualVisits.map(v => v.id)))
-      setSelectedPatients(new Set(patientsWithVisitsToday.map(p => p.id)))
     }
   }
 
-  if (loading || patientsLoading) return <div>Loading...</div>
+  if (isLoading) return <div>Loading...</div>
 
   const isToday = isSameDay(selectedDate, new Date())
 
@@ -267,18 +220,17 @@ export default function VisitManager() {
           </button>
           <button
             onClick={handleMarkCompleted}
-            disabled={selectedVisits.size === 0 || submitting}
+            disabled={selectedVisits.size === 0 || markAttendanceMutation.isPending}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm sm:text-base"
           >
-            {submitting ? 'Updating...' : `Mark ${selectedVisits.size} Visit${selectedVisits.size !== 1 ? 's' : ''} as Completed`}
+            {markAttendanceMutation.isPending ? 'Updating...' : `Mark ${selectedVisits.size} Visit${selectedVisits.size !== 1 ? 's' : ''} as Completed`}
           </button>
         </div>
 
         {/* Timeline of Visits for Selected Date */}
         <PullToRefresh
           onRefresh={async () => {
-            queryClient.invalidateQueries({ queryKey: ['visits'] })
-            queryClient.invalidateQueries({ queryKey: ['patients'] })
+            queryClient.invalidateQueries({ queryKey: ['attendance'] })
           }}
         >
           {individualVisits.length > 0 ? (
@@ -333,8 +285,9 @@ export default function VisitManager() {
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => handleSelectVisit(visit.id, visit.patientId)}
-                            className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            onChange={() => handleSelectVisit(visit.attendanceId)}
+                            disabled={visit.status === 'completed'}
+                            className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
                           />
                           <div className="flex-1">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -344,12 +297,17 @@ export default function VisitManager() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                                  isSelected
+                                  visit.status === 'completed'
+                                    ? 'bg-green-200 text-green-900'
+                                    : isSelected
                                     ? 'bg-blue-200 text-blue-900'
                                     : 'bg-gray-100 text-gray-700'
                                 }`}>
                                   {format(visit.time, 'h:mm a')}
                                 </span>
+                                {visit.status === 'completed' && (
+                                  <span className="text-xs text-green-700 font-medium">✓ Completed</span>
+                                )}
                               </div>
                             </div>
                           </div>

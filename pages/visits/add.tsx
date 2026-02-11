@@ -4,8 +4,8 @@ import Head from 'next/head'
 import Navigation from '../../components/Navigation'
 import { useAuth } from '../../contexts/AuthContext'
 import { Patient, User, ServiceType, VisitFrequency, CreatePatientRequest, CreateVisitRequest, TimeSlot } from '../../types'
-import { patientsStorage, visitsStorage } from '../../utils/storage'
-import { usePatients } from '../../hooks/usePatients'
+import { usePatientsQuery, useCreatePatient, useUpdatePatient } from '../../hooks/usePatientsQuery'
+import { useCreateVisit } from '../../hooks/useVisitsQuery'
 import { generateVisitDates } from '../../utils/visitScheduler'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -24,7 +24,10 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'F
 export default function AddVisitPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { patients: existingPatients, addPatient, updatePatient } = usePatients()
+  const { data: existingPatients = [] } = usePatientsQuery()
+  const createPatientMutation = useCreatePatient()
+  const updatePatientMutation = useUpdatePatient()
+  const createVisitMutation = useCreateVisit()
   const [mode, setMode] = useState<FormMode>('existing')
   const [loading, setLoading] = useState(false)
   const [firmUsers, setFirmUsers] = useState<User[]>([])
@@ -184,25 +187,20 @@ export default function AddVisitPage() {
 
       // Create patient if new
       if (mode === 'new') {
-        // Generate patient ID (using simple UUID-like approach)
-        const newPatient: Patient = {
-          id: `patient-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        const newPatient = await createPatientMutation.mutateAsync({
           name: patientName,
-          service: patientService,
-          status: 'pending'
-        }
-
-        // Save to localStorage
-        if (!addPatient(newPatient)) {
-          throw new Error('Failed to save patient')
-        }
+          service: patientService
+        })
         patientId = newPatient.id
       } else {
         // Update patient service if changed
         if (selectedPatientId) {
           const patient = existingPatients.find(p => p.id === selectedPatientId)
           if (patient && patient.service !== selectedService) {
-            updatePatient(selectedPatientId, { service: selectedService })
+            await updatePatientMutation.mutateAsync({
+              id: selectedPatientId,
+              updates: { service: selectedService }
+            })
           }
         }
       }
@@ -210,45 +208,22 @@ export default function AddVisitPage() {
       // Determine visitor ID
       const visitorId = visitorType === 'current' && user ? user.id : selectedVisitorId
 
-      // Generate visit dates using the scheduler
-      const generatedDates = generateVisitDates(
-        frequency,
-        visitsPerPeriod,
-        startDate,
-        timeSlots,
-        endDateType === 'date' ? endDate : undefined,
-        endDateType === 'occurrences' ? occurrences : undefined
-      )
-
-      if (generatedDates.length === 0) {
-        throw new Error('No visits could be generated with the provided parameters')
-      }
-
-      // Create visit object
-      const newVisit = {
-        id: `visit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      // Create visit schedule (API will generate dates and attendance records)
+      await createVisitMutation.mutateAsync({
         patientId,
         visitorId,
         frequency,
         visitsPerPeriod,
         startDate,
         ...(endDateType === 'date' ? { endDate } : endDateType === 'occurrences' ? { occurrences } : {}),
-        timeSlots,
-        generatedDates,
-        createdAt: new Date().toISOString()
-      }
+        timeSlots
+      })
 
-      // Save to localStorage
-      if (!visitsStorage.add(newVisit)) {
-        throw new Error('Failed to save visit')
-      }
-
-      // Update patient's lastVisit when visit is created
-      // Use the first generated visit date as the lastVisit
-      if (patientId && generatedDates.length > 0) {
-        const firstVisitDate = generatedDates[0]
-        updatePatient(patientId, { lastVisit: firstVisitDate })
-      }
+      // Show success message
+      toast({
+        title: 'Success',
+        description: 'Patient and visit schedule created successfully',
+      })
 
       // Redirect to visits page
       router.push('/visits')
