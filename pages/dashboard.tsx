@@ -1,8 +1,8 @@
 import Head from 'next/head'
-import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Navigation from '../components/Navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { useAuth } from '../contexts/AuthContext'
 import { usePatientsQuery } from '../hooks/usePatientsQuery'
 import { useVisitsQuery } from '../hooks/useVisitsQuery'
 import { useInvoicesQuery } from '../hooks/useInvoicesQuery'
@@ -16,21 +16,33 @@ interface DashboardStats {
 }
 
 export default function Dashboard() {
-  const { data: patients = [], isLoading: patientsLoading } = usePatientsQuery()
-  const { data: visits = [], isLoading: visitsLoading } = useVisitsQuery()
-  const { data: invoices = [], isLoading: invoicesLoading } = useInvoicesQuery()
+  const { user } = useAuth()
+  const { data: allPatients = [], isLoading: patientsLoading } = usePatientsQuery()
+  const { data: visits = [], isLoading: visitsLoading } = useVisitsQuery(user?.id)
+  const { data: allInvoices = [], isLoading: invoicesLoading } = useInvoicesQuery()
+
+  const myPatientIds = new Set(visits.map(v => v.patientId))
+  const patients = user?.id ? allPatients.filter(p => myPatientIds.has(p.id)) : allPatients
+  const invoices = user?.id ? allInvoices.filter(inv => myPatientIds.has(inv.patientId)) : allInvoices
+
+  const schedulesWithFutureDates = visits.filter(v => {
+    const today = new Date()
+    const dates = v.generatedDates || []
+    return dates.some(date => {
+      const visitDate = new Date(date)
+      return visitDate >= today
+    })
+  })
+  const patientsWithActiveVisits = new Set(schedulesWithFutureDates.map(v => v.patientId)).size
 
   const stats: DashboardStats = {
     totalPatients: patients.length,
-    activeVisits: visits.filter(v => {
-      const today = new Date()
-      return v.generatedDates.some(date => {
-        const visitDate = new Date(date)
-        return visitDate >= today
-      })
-    }).length,
+    activeVisits: patientsWithActiveVisits,
     pendingInvoices: invoices.length,
-    completedVisits: visits.reduce((acc, v) => acc + v.generatedDates.filter(date => new Date(date) < new Date()).length, 0)
+    completedVisits: visits.reduce((acc, v) => {
+      const dates = v.generatedDates || []
+      return acc + dates.filter(date => new Date(date) < new Date()).length
+    }, 0)
   }
 
   const loading = patientsLoading || visitsLoading || invoicesLoading
@@ -83,7 +95,7 @@ export default function Dashboard() {
                 <motion.div variants={staggerItem}>
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Active Visits</CardTitle>
+                      <CardTitle className="text-sm font-medium">Patients with active visits</CardTitle>
                       <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>

@@ -3,6 +3,7 @@ import Head from 'next/head'
 import { motion } from 'framer-motion'
 import { format, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
 import Navigation from '../../components/Navigation'
+import { useAuth } from '../../contexts/AuthContext'
 import { usePatientsQuery } from '../../hooks/usePatientsQuery'
 import { useVisitsQuery } from '../../hooks/useVisitsQuery'
 import { useInvoicesQuery, useCreateInvoice, useUpdateInvoice, useDeleteInvoice } from '../../hooks/useInvoicesQuery'
@@ -18,9 +19,13 @@ import { staggerContainer, staggerItem } from '../../lib/animations'
 import { toast } from '../../hooks/use-toast'
 
 export default function Invoices() {
-  const { data: patients = [], isLoading: patientsLoading } = usePatientsQuery()
-  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
-  const { data: invoices = [], isLoading: invoicesLoading } = useInvoicesQuery()
+  const { user } = useAuth()
+  const { data: allPatients = [], isLoading: patientsLoading } = usePatientsQuery()
+  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery(user?.id)
+  const { data: allInvoices = [], isLoading: invoicesLoading } = useInvoicesQuery()
+  const myPatientIds = new Set(scheduledVisits.map(v => v.patientId))
+  const patients = user?.id ? allPatients.filter(p => myPatientIds.has(p.id)) : allPatients
+  const invoices = user?.id ? allInvoices.filter(inv => myPatientIds.has(inv.patientId)) : allInvoices
   const createInvoiceMutation = useCreateInvoice()
   const updateInvoiceMutation = useUpdateInvoice()
   const deleteInvoiceMutation = useDeleteInvoice()

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import Navigation from '../../components/Navigation'
 import { Patient, ScheduledVisit } from '../../types'
 import { format, parseISO, isAfter, isBefore, isSameDay } from 'date-fns'
+import { useAuth } from '../../contexts/AuthContext'
 import { usePatientsQuery } from '../../hooks/usePatientsQuery'
 import { useVisitsQuery } from '../../hooks/useVisitsQuery'
 import { Button } from '../../components/ui/button'
@@ -18,9 +19,12 @@ import { useQueryClient } from '@tanstack/react-query'
 export default function PatientsManager() {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: patients = [], isLoading: patientsLoading } = usePatientsQuery()
-  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery()
-  
+  const { user } = useAuth()
+  const { data: allPatients = [], isLoading: patientsLoading } = usePatientsQuery()
+  const { data: scheduledVisits = [], isLoading: visitsLoading } = useVisitsQuery(user?.id)
+  const myPatientIds = new Set(scheduledVisits.map(v => v.patientId))
+  const patients = user?.id ? allPatients.filter(p => myPatientIds.has(p.id)) : allPatients
+
   const loading = patientsLoading || visitsLoading
 
   // Get visit schedules for each patient

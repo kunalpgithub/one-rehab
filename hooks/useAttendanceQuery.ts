@@ -1,12 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { attendanceApi } from '@/services/api/attendance'
+import { visitsApi } from '@/services/api/visits'
 
 const ATTENDANCE_QUERY_KEY = ['attendance']
+const SCHEDULE_SLOTS_QUERY_KEY = ['schedule-slots']
 
-export function useAttendanceByDateQuery(date: Date) {
+export function useAttendanceByDateQuery(date: Date, visitorId?: string) {
   return useQuery({
-    queryKey: [...ATTENDANCE_QUERY_KEY, 'date', date.toISOString().split('T')[0]],
-    queryFn: () => attendanceApi.getByDate(date),
+    queryKey: [...ATTENDANCE_QUERY_KEY, 'date', date.toISOString().split('T')[0], visitorId ?? 'all'],
+    queryFn: () => attendanceApi.getByDate(date, visitorId),
     staleTime: 1000 * 60 * 2, // 2 minutes (more frequent updates for today's visits)
   })
 }
@@ -27,25 +29,34 @@ export function useAttendanceByDateRangeQuery(startDate: Date, endDate: Date) {
   })
 }
 
+export function useScheduleSlotsForDateQuery(date: Date, visitorId?: string) {
+  return useQuery({
+    queryKey: [...SCHEDULE_SLOTS_QUERY_KEY, date.toISOString().split('T')[0], visitorId ?? 'all'],
+    queryFn: () => visitsApi.getSlotsForDate(date, visitorId),
+    staleTime: 1000 * 60 * 2,
+  })
+}
+
 export function useMarkAttendance() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: ({ 
-      attendanceIds, 
-      status, 
-      markedBy 
-    }: { 
-      attendanceIds: string[]
+    mutationFn: ({
+      items,
+      status,
+      markedBy,
+    }: {
+      items: Array<
+        | { id: string }
+        | { patientId: string; visitorId: string; scheduledDate: string; scheduledTime?: string }
+      >
       status: 'completed' | 'missed'
-      markedBy: string 
-    }) => attendanceApi.markAttendance(attendanceIds, status, markedBy),
-    onSuccess: (_, variables) => {
-      // Invalidate all attendance queries
+      markedBy: string
+    }) => attendanceApi.markAttendance(items, status, markedBy),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ATTENDANCE_QUERY_KEY })
-      // Also invalidate visits since attendance affects visit data
       queryClient.invalidateQueries({ queryKey: ['visits'] })
-      // Invalidate invoices since attendance affects invoice calculations
+      queryClient.invalidateQueries({ queryKey: ['schedule-slots'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
   })

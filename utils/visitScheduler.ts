@@ -35,9 +35,10 @@ export function generateVisitDates(
       // Apply each time slot to this day
       for (const timeSlot of timeSlots) {
         const [hours, minutes] = timeSlot.time.split(':').map(Number)
+        // Create date in local timezone to preserve the intended time
         const visitDate = new Date(baseDate)
         visitDate.setHours(hours, minutes, 0, 0)
-        dates.push(new Date(visitDate))
+        dates.push(visitDate)
       }
       
       periodCount++
@@ -70,7 +71,12 @@ export function generateVisitDates(
         // Apply time
         const [hours, minutes] = timeSlot.time.split(':').map(Number)
         visitDate.setHours(hours, minutes, 0, 0)
-        dates.push(new Date(visitDate))
+        // Store as ISO string but keep local time components
+        const year = visitDate.getFullYear()
+        const month = String(visitDate.getMonth() + 1).padStart(2, '0')
+        const day = String(visitDate.getDate()).padStart(2, '0')
+        const timeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':00'
+        dates.push(new Date(`${year}-${month}-${day}T${timeStr}`))
       }
       
       periodCount++
@@ -103,7 +109,12 @@ export function generateVisitDates(
         // Apply time
         const [hours, minutes] = timeSlot.time.split(':').map(Number)
         visitDate.setHours(hours, minutes, 0, 0)
-        dates.push(new Date(visitDate))
+        // Store as ISO string but keep local time components
+        const year = visitDate.getFullYear()
+        const month = String(visitDate.getMonth() + 1).padStart(2, '0')
+        const day = String(visitDate.getDate()).padStart(2, '0')
+        const timeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':00'
+        dates.push(new Date(`${year}-${month}-${day}T${timeStr}`))
       }
       
       periodCount++
@@ -112,9 +123,19 @@ export function generateVisitDates(
   }
 
   // Sort dates and remove duplicates
+  // Format dates as ISO strings but preserve local time (no timezone conversion)
   return dates
     .sort((a, b) => a.getTime() - b.getTime())
-    .map(date => date.toISOString())
+    .map(date => {
+      // Format as YYYY-MM-DDTHH:mm:ss (local time, no timezone)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+    })
     .filter((date, index, self) => self.indexOf(date) === index)
 }
 

@@ -4,10 +4,10 @@ import { visitsApi } from '@/services/api/visits'
 
 const VISITS_QUERY_KEY = ['visits']
 
-export function useVisitsQuery() {
+export function useVisitsQuery(visitorId?: string) {
   return useQuery({
-    queryKey: VISITS_QUERY_KEY,
-    queryFn: () => visitsApi.getAll(),
+    queryKey: [...VISITS_QUERY_KEY, visitorId ?? 'all'],
+    queryFn: () => visitsApi.getAll(visitorId),
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 }

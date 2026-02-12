@@ -80,3 +80,30 @@ export interface CreateInvoiceRequest {
   endDate: string
   ratePerVisit: number
 }
+
+/** Slot derived from a schedule for a given date (display only; no id until saved as attendance) */
+export interface ScheduleSlot {
+  schedule_id?: string
+  patient_id: string
+  visitor_id: string
+  scheduled_date: string
+  scheduled_time?: string
+  patient?: Pick<Patient, 'id' | 'name' | 'service'>
+}
+
+export interface VisitAttendance {
+  id: string
+  schedule_id?: string | null
+  patient_id: string
+  visitor_id: string
+  scheduled_date: string
+  scheduled_time?: string
+  status: 'pending' | 'completed' | 'missed'
+  marked_by?: string
+  marked_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+  patient?: Patient
+  visitor?: User
+}

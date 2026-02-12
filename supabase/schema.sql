@@ -31,9 +31,10 @@ CREATE TABLE IF NOT EXISTS visit_schedules (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Visit Attendance Table
+-- Visit Attendance Table (one row per patient+visitor+date+time; optional link to schedule)
 CREATE TABLE IF NOT EXISTS visit_attendance (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  schedule_id UUID REFERENCES visit_schedules(id) ON DELETE CASCADE,
   patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   visitor_id TEXT NOT NULL,
   scheduled_date DATE NOT NULL,
@@ -43,7 +44,8 @@ CREATE TABLE IF NOT EXISTS visit_attendance (
   marked_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (patient_id, visitor_id, scheduled_date, scheduled_time)
 );
 
 -- Invoices Table
@@ -69,6 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_visit_schedules_patient_id ON visit_schedules(pat
 CREATE INDEX IF NOT EXISTS idx_visit_schedules_visitor_id ON visit_schedules(visitor_id);
 CREATE INDEX IF NOT EXISTS idx_visit_attendance_patient_id ON visit_attendance(patient_id);
 CREATE INDEX IF NOT EXISTS idx_visit_attendance_scheduled_date ON visit_attendance(scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_visit_attendance_date_time ON visit_attendance(scheduled_date, scheduled_time);
+CREATE INDEX IF NOT EXISTS idx_visit_attendance_schedule_id ON visit_attendance(schedule_id) WHERE schedule_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_visit_attendance_status ON visit_attendance(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_patient_id ON invoices(patient_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at);

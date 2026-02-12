@@ -2,14 +2,14 @@ import { supabase } from '@/lib/supabase/client'
 import type { VisitAttendance } from '@/types'
 
 export const attendanceApi = {
-  // Get attendance for a specific date (main query for visits page)
-  async getByDate(date: Date): Promise<VisitAttendance[]> {
+  // Get attendance for a specific date (main query for visits page), optionally scoped to a visitor
+  async getByDate(date: Date, visitorId?: string): Promise<VisitAttendance[]> {
     const startOfDay = new Date(date)
     startOfDay.setHours(0, 0, 0, 0)
     const endOfDay = new Date(date)
     endOfDay.setHours(23, 59, 59, 999)
 
-    const { data, error } = await supabase
+    let q = supabase
       .from('visit_attendance')
       .select(`
         *,
@@ -19,7 +19,8 @@ export const attendanceApi = {
       .lte('scheduled_date', endOfDay.toISOString().split('T')[0])
       .order('scheduled_time', { ascending: true, nullsFirst: false })
       .order('scheduled_date', { ascending: true })
-    
+    if (visitorId) q = q.eq('visitor_id', visitorId)
+    const { data, error } = await q
     if (error) throw error
     return (data || []) as VisitAttendance[]
   },
@@ -52,27 +53,52 @@ export const attendanceApi = {
     return (data || []) as VisitAttendance[]
   },
 
-  // Mark attendance (bulk update)
+  // Mark attendance: update existing by id, or create new records for slots without id (when saving from UI)
   async markAttendance(
-    attendanceIds: string[], 
+    items: Array<
+      | { id: string }
+      | { patientId: string; visitorId: string; scheduledDate: string; scheduledTime?: string }
+    >,
     status: 'completed' | 'missed',
     markedBy: string
   ): Promise<void> {
-    const { error } = await supabase
-      .from('visit_attendance')
-      .update({
+    const ids = items.filter((x): x is { id: string } => 'id' in x && !!x.id).map(x => x.id)
+    const slots = items.filter(
+      (x): x is { patientId: string; visitorId: string; scheduledDate: string; scheduledTime?: string } =>
+        'patientId' in x && !!x.patientId
+    )
+
+    const now = new Date().toISOString()
+    if (ids.length > 0) {
+      const { error } = await supabase
+        .from('visit_attendance')
+        .update({
+          status,
+          marked_by: markedBy,
+          marked_at: now,
+          completed_at: status === 'completed' ? now : null,
+          updated_at: now,
+        })
+        .in('id', ids)
+      if (error) throw error
+    }
+    if (slots.length > 0) {
+      const rows = slots.map(s => ({
+        patient_id: s.patientId,
+        visitor_id: s.visitorId,
+        scheduled_date: s.scheduledDate,
+        scheduled_time: s.scheduledTime || null,
         status,
         marked_by: markedBy,
-        marked_at: new Date().toISOString(),
-        completed_at: status === 'completed' ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString()
-      })
-      .in('id', attendanceIds)
-    
-    if (error) throw error
+        marked_at: now,
+        completed_at: status === 'completed' ? now : null,
+      }))
+      const { error } = await supabase.from('visit_attendance').insert(rows)
+      if (error) throw error
+    }
   },
 
-  // Create attendance records (when schedule is created)
+  // Create attendance records (when schedule is created). schedule_id optional for backfill compatibility.
   async createMany(records: Omit<VisitAttendance, 'id' | 'created_at' | 'updated_at' | 'marked_by' | 'marked_at' | 'completed_at'>[]): Promise<void> {
     const { error } = await supabase
       .from('visit_attendance')

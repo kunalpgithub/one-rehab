@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
-import type { ScheduledVisit, CreateVisitRequest } from '@/types'
+import type { ScheduledVisit, CreateVisitRequest, ScheduleSlot } from '@/types'
 import { generateVisitDates } from '@/utils/visitScheduler'
-import { attendanceApi } from './attendance'
 
 // Transform Supabase row to ScheduledVisit interface
 function transformVisitRow(row: any): ScheduledVisit {
@@ -21,13 +20,14 @@ function transformVisitRow(row: any): ScheduledVisit {
 }
 
 export const visitsApi = {
-  // Get all visit schedules
-  async getAll(): Promise<ScheduledVisit[]> {
-    const { data, error } = await supabase
+  // Get all visit schedules, optionally scoped to a visitor
+  async getAll(visitorId?: string): Promise<ScheduledVisit[]> {
+    let q = supabase
       .from('visit_schedules')
       .select('*')
       .order('created_at', { ascending: false })
-    
+    if (visitorId) q = q.eq('visitor_id', visitorId)
+    const { data, error } = await q
     if (error) throw error
     return (data || []).map(transformVisitRow)
   },
@@ -56,9 +56,8 @@ export const visitsApi = {
     return (data || []).map(transformVisitRow)
   },
 
-  // Create visit schedule and generate attendance records
+  // Create visit schedule only (no attendance records — those are created when marking from UI)
   async createSchedule(schedule: CreateVisitRequest): Promise<ScheduledVisit> {
-    // Generate visit dates
     const generatedDates = generateVisitDates(
       schedule.frequency,
       schedule.visitsPerPeriod,
@@ -72,7 +71,6 @@ export const visitsApi = {
       throw new Error('No visits could be generated with the provided parameters')
     }
 
-    // Create the schedule
     const { data: scheduleData, error: scheduleError } = await supabase
       .from('visit_schedules')
       .insert({
@@ -90,40 +88,39 @@ export const visitsApi = {
       .single()
 
     if (scheduleError) throw scheduleError
-
-    // Generate attendance records for each generated date
-    // Note: generatedDates format is YYYY-MM-DDTHH:mm:ss (local time, no timezone)
-    const attendanceRecords = generatedDates.map((dateStr) => {
-      // Parse the date string (format: YYYY-MM-DDTHH:mm:ss)
-      const [datePart, timePart] = dateStr.split('T')
-      const scheduledDate = datePart // Already in YYYY-MM-DD format
-      const [hours, minutes] = timePart.split(':')
-      const scheduledTime = `${hours}:${minutes}` // HH:MM format
-
-      return {
-        patient_id: schedule.patientId,
-        visitor_id: schedule.visitorId,
-        scheduled_date: scheduledDate,
-        scheduled_time: scheduledTime,
-        status: 'pending' as const,
-      }
-    })
-    
-    // Remove duplicates before inserting (same patient, date, and time)
-    const uniqueRecords = attendanceRecords.filter((record, index, self) => 
-      index === self.findIndex(r => 
-        r.patient_id === record.patient_id &&
-        r.scheduled_date === record.scheduled_date &&
-        r.scheduled_time === record.scheduled_time
-      )
-    )
-
-    // Create attendance records (only unique ones)
-    if (uniqueRecords.length > 0) {
-      await attendanceApi.createMany(uniqueRecords)
-    }
-
     return transformVisitRow(scheduleData)
+  },
+
+  // Slots for a date from schedules only (for display; no DB attendance). Used for upcoming/future dates and to merge with saved attendance for today.
+  async getSlotsForDate(date: Date, visitorId?: string): Promise<ScheduleSlot[]> {
+    const dateStr = date.toISOString().split('T')[0]
+    let q = supabase
+      .from('visit_schedules')
+      .select('id, patient_id, visitor_id, generated_dates, patient:patients(id, name, service)')
+    if (visitorId) q = q.eq('visitor_id', visitorId)
+    const { data: rows, error } = await q
+    if (error) throw error
+
+    const slots: ScheduleSlot[] = []
+    for (const row of rows || []) {
+      const dates = (row.generated_dates || []) as string[]
+      for (const dateTimeStr of dates) {
+        if (dateTimeStr.startsWith(dateStr)) {
+          const [, timePart] = dateTimeStr.includes('T') ? dateTimeStr.split('T') : [dateStr, '00:00:00']
+          const scheduledTime = timePart ? timePart.slice(0, 5) : undefined // HH:MM
+          slots.push({
+            schedule_id: row.id,
+            patient_id: row.patient_id,
+            visitor_id: row.visitor_id,
+            scheduled_date: dateStr,
+            scheduled_time: scheduledTime || undefined,
+            patient: (row as any).patient ?? undefined,
+          })
+        }
+      }
+    }
+    slots.sort((a, b) => (a.scheduled_time || '').localeCompare(b.scheduled_time || ''))
+    return slots
   },
 
   // Update visit schedule

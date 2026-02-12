@@ -1,107 +1,171 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import Navigation from '../../components/Navigation'
-import { VisitAttendance } from '../../types'
 import { format, addDays, subDays, isSameDay, parseISO } from 'date-fns'
-import { useAttendanceByDateQuery, useMarkAttendance } from '../../hooks/useAttendanceQuery'
-import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../../contexts/AuthContext'
+import {
+  useAttendanceByDateQuery,
+  useScheduleSlotsForDateQuery,
+  useMarkAttendance,
+} from '../../hooks/useAttendanceQuery'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { staggerContainer, staggerItem } from '../../lib/animations'
 import { PullToRefresh } from '../../components/PullToRefresh'
 import { toast } from '../../hooks/use-toast'
 
+function slotKey(patientId: string, visitorId: string, date: string, time?: string) {
+  return `${patientId}-${visitorId}-${date}-${time ?? ''}`
+}
+
+interface IndividualVisit {
+  id: string
+  attendanceId?: string
+  patientId: string
+  visitorId: string
+  scheduledDate: string
+  scheduledTime?: string
+  patientName: string
+  service: string
+  time: Date
+  status: 'pending' | 'completed' | 'missed'
+}
+
 export default function VisitManager() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [dateInputValue, setDateInputValue] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
-  const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set()) // Attendance record IDs
-  
-  // Use attendance query for the selected date
-  const { data: attendanceRecords = [], isLoading } = useAttendanceByDateQuery(selectedDate)
+  const [selectedVisits, setSelectedVisits] = useState<Set<string>>(new Set())
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const selectedDay = new Date(selectedDate)
+  selectedDay.setHours(0, 0, 0, 0)
+  const isFuture = selectedDay > today
+
+  const { data: attendanceRecords = [], isLoading: attendanceLoading } = useAttendanceByDateQuery(
+    selectedDate,
+    user?.id
+  )
+  const { data: scheduleSlots = [], isLoading: slotsLoading } = useScheduleSlotsForDateQuery(
+    selectedDate,
+    user?.id
+  )
+
   const markAttendanceMutation = useMarkAttendance()
 
-  const handleSelectVisit = (attendanceId: string) => {
+  const handleSelectVisit = (id: string) => {
     const newSelected = new Set(selectedVisits)
-    if (newSelected.has(attendanceId)) {
-      newSelected.delete(attendanceId)
-    } else {
-      newSelected.add(attendanceId)
-    }
+    if (newSelected.has(id)) newSelected.delete(id)
+    else newSelected.add(id)
     setSelectedVisits(newSelected)
   }
 
-  const handleMarkCompleted = async () => {
-    if (selectedVisits.size === 0 || !user) return
+  type VisitRow =
+    | { type: 'attendance'; record: import('../../types').VisitAttendance }
+    | { type: 'slot'; slot: import('../../types').ScheduleSlot }
 
-    try {
-      await markAttendanceMutation.mutateAsync({
-        attendanceIds: Array.from(selectedVisits),
-        status: 'completed',
-        markedBy: user.id
-      })
-      
-      setSelectedVisits(new Set())
-      toast({
-        title: 'Success',
-        description: `${selectedVisits.size} visit(s) marked as completed`,
-      })
-    } catch (error) {
-      console.error('Error updating visits:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to update visits',
-        variant: 'destructive',
+  const individualVisits = useMemo((): IndividualVisit[] => {
+    if (isFuture) {
+      return scheduleSlots.map(slot => {
+        const time = slot.scheduled_time
+          ? parseISO(`${slot.scheduled_date}T${slot.scheduled_time}`)
+          : parseISO(slot.scheduled_date)
+        return {
+          id: slotKey(slot.patient_id, slot.visitor_id, slot.scheduled_date, slot.scheduled_time),
+          patientId: slot.patient_id,
+          visitorId: slot.visitor_id,
+          scheduledDate: slot.scheduled_date,
+          scheduledTime: slot.scheduled_time,
+          patientName: slot.patient?.name ?? 'Unknown',
+          service: slot.patient?.service ?? 'Unknown',
+          time,
+          status: 'pending' as const,
+        }
       })
     }
+    const byKey = new Map<string, VisitRow>()
+    for (const r of attendanceRecords) {
+      const key = slotKey(r.patient_id, r.visitor_id, r.scheduled_date, r.scheduled_time)
+      byKey.set(key, { type: 'attendance', record: r })
+    }
+    for (const slot of scheduleSlots) {
+      const key = slotKey(slot.patient_id, slot.visitor_id, slot.scheduled_date, slot.scheduled_time)
+      if (!byKey.has(key)) byKey.set(key, { type: 'slot', slot })
+    }
+    return Array.from(byKey.entries())
+      .map(([key, row]): IndividualVisit | null => {
+        if (row.type === 'attendance') {
+          const r = row.record
+          const patient = r.patient || { name: 'Unknown', service: 'Unknown' }
+          const time = r.scheduled_time
+            ? parseISO(`${r.scheduled_date}T${r.scheduled_time}`)
+            : parseISO(r.scheduled_date)
+          if (r.status !== 'pending' && r.status !== 'completed') return null
+          return {
+            id: r.id,
+            attendanceId: r.id,
+            patientId: r.patient_id,
+            visitorId: r.visitor_id,
+            scheduledDate: r.scheduled_date,
+            scheduledTime: r.scheduled_time,
+            patientName: patient.name ?? 'Unknown',
+            service: patient.service ?? 'Unknown',
+            time,
+            status: r.status,
+          }
+        }
+        const slot = row.slot
+        const time = slot.scheduled_time
+          ? parseISO(`${slot.scheduled_date}T${slot.scheduled_time}`)
+          : parseISO(slot.scheduled_date)
+        return {
+          id: key,
+          patientId: slot.patient_id,
+          visitorId: slot.visitor_id,
+          scheduledDate: slot.scheduled_date,
+          scheduledTime: slot.scheduled_time,
+          patientName: slot.patient?.name ?? 'Unknown',
+          service: slot.patient?.service ?? 'Unknown',
+          time,
+          status: 'pending',
+        }
+      })
+      .filter((v): v is IndividualVisit => v !== null)
+      .sort((a, b) => a.time.getTime() - b.time.getTime())
+  }, [isFuture, attendanceRecords, scheduleSlots])
+
+  const handleMarkCompleted = async () => {
+    if (selectedVisits.size === 0 || !user) return
+    const items = individualVisits
+      .filter(v => selectedVisits.has(v.id))
+      .map(v =>
+        v.attendanceId
+          ? { id: v.attendanceId }
+          : {
+              patientId: v.patientId,
+              visitorId: v.visitorId,
+              scheduledDate: v.scheduledDate,
+              scheduledTime: v.scheduledTime,
+            }
+      )
+    try {
+      await markAttendanceMutation.mutateAsync({
+        items,
+        status: 'completed',
+        markedBy: user.id,
+      })
+      setSelectedVisits(new Set())
+      toast({ title: 'Success', description: `${items.length} visit(s) marked as completed` })
+    } catch (error) {
+      console.error('Error updating visits:', error)
+      toast({ title: 'Error', description: 'Failed to update visits', variant: 'destructive' })
+    }
   }
-
-  // Transform attendance records to individual visits for display
-  interface IndividualVisit {
-    id: string
-    attendanceId: string
-    patientId: string
-    patientName: string
-    service: string
-    time: Date
-    status: 'pending' | 'completed' | 'missed'
-  }
-
-  // First, deduplicate attendance records (same patient, date, and time)
-  const uniqueRecords = attendanceRecords.filter((record, index, self) => 
-    index === self.findIndex(r => 
-      r.patient_id === record.patient_id &&
-      r.scheduled_date === record.scheduled_date &&
-      r.scheduled_time === record.scheduled_time
-    )
-  )
-
-  const individualVisits: IndividualVisit[] = uniqueRecords
-    .filter(record => {
-      // Only show pending or completed visits (not missed unless we want to show them)
-      return record.status === 'pending' || record.status === 'completed'
-    })
-    .map(record => {
-      const patient = record.patient || { name: 'Unknown', service: 'Unknown' }
-      const scheduledDateTime = record.scheduled_time
-        ? parseISO(`${record.scheduled_date}T${record.scheduled_time}`)
-        : parseISO(record.scheduled_date)
-      
-      return {
-        id: record.id,
-        attendanceId: record.id,
-        patientId: record.patient_id,
-        patientName: patient.name || 'Unknown',
-        service: patient.service || 'Unknown',
-        time: scheduledDateTime,
-        status: record.status
-      }
-    })
-    .sort((a, b) => a.time.getTime() - b.time.getTime()) // Sort by time
 
   const handlePreviousDay = () => {
     const newDate = subDays(selectedDate, 1)
@@ -135,6 +199,7 @@ export default function VisitManager() {
     }
   }
 
+  const isLoading = isFuture ? slotsLoading : attendanceLoading || slotsLoading
   if (isLoading) return <div>Loading...</div>
 
   const isToday = isSameDay(selectedDate, new Date())
@@ -220,7 +285,8 @@ export default function VisitManager() {
           </button>
           <button
             onClick={handleMarkCompleted}
-            disabled={selectedVisits.size === 0 || markAttendanceMutation.isPending}
+            disabled={isFuture || selectedVisits.size === 0 || markAttendanceMutation.isPending}
+            title={isFuture ? 'Attendance can be marked on or after the visit date' : undefined}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm sm:text-base"
           >
             {markAttendanceMutation.isPending ? 'Updating...' : `Mark ${selectedVisits.size} Visit${selectedVisits.size !== 1 ? 's' : ''} as Completed`}
@@ -231,6 +297,7 @@ export default function VisitManager() {
         <PullToRefresh
           onRefresh={async () => {
             queryClient.invalidateQueries({ queryKey: ['attendance'] })
+            queryClient.invalidateQueries({ queryKey: ['schedule-slots'] })
           }}
         >
           {individualVisits.length > 0 ? (
@@ -285,7 +352,7 @@ export default function VisitManager() {
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={() => handleSelectVisit(visit.attendanceId)}
+                            onChange={() => handleSelectVisit(visit.id)}
                             disabled={visit.status === 'completed'}
                             className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
                           />
