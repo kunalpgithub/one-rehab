@@ -9,3 +9,4 @@
 - Multi-location or multi-practice support
 - Reporting / export: run reports or export data (e.g. visits, revenue) for a date range
 - Invoice reminders: remind staff or patients about unpaid or due invoices
+- **User signup and invitations**: minimal signup collecting contact/personal info; invite flows — visitor adds patient → patient invited to signup, patient adds visitor → visitor invited, manager invites team; centralized profile for everyone (see [User signup and invitations](features/user-signup-invitations.md) in backlog)
