@@ -106,10 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithGoogle = async () => {
     try {
-      // Get the current origin (works for both dev and production)
-      const redirectTo = typeof window !== 'undefined' 
-        ? `${window.location.origin}/dashboard`
-        : '/dashboard'
+      // Use NEXT_PUBLIC_APP_URL in production (set in Vercel/hosting env) so redirect
+      // works after OAuth. Otherwise Supabase may redirect to Site URL (localhost).
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : '')
+      const redirectTo = baseUrl ? `${baseUrl.replace(/\/$/, '')}/dashboard` : '/dashboard'
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
